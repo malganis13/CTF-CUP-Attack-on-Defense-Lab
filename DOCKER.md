@@ -9,7 +9,7 @@ docker version
 docker compose version
 ```
 
-Если команда `docker` не найдена, установите Docker Desktop, запустите его и откройте новый PowerShell. В текущей среде Docker CLI не установлен, поэтому фактический запуск Compose здесь невозможен.
+Если команда `docker` не найдена, установите Docker Desktop, запустите его и откройте новый PowerShell. Для Linux-контейнеров Docker Desktop должен быть переключён на WSL 2 backend.
 
 ## 1. Первый запуск
 
@@ -29,6 +29,8 @@ PATCHED=0
 NOTES_PORT=18081
 WORKFLOW_PORT=18082
 SEARCH_PORT=18083
+GO_FILES_PORT=18084
+RUST_PROFILE_PORT=18085
 ```
 
 Файл `.env` не публикуйте в GitHub. Запустите сборку и контейнеры:
@@ -50,6 +52,8 @@ docker compose logs --tail=50
 Invoke-RestMethod http://127.0.0.1:18081/health
 Invoke-RestMethod http://127.0.0.1:18082/health
 Invoke-RestMethod http://127.0.0.1:18083/health
+Invoke-RestMethod http://127.0.0.1:18084/health
+Invoke-RestMethod http://127.0.0.1:18085/health
 ```
 
 В ответе должны быть `status: ok`, соответствующий `service` и `patched: false`.
@@ -62,7 +66,7 @@ Invoke-RestMethod http://127.0.0.1:18083/health
 python checker.py --token 'replace-with-a-long-random-local-token' --team-user blue
 ```
 
-Ожидаемый результат — три строки `UP`. Checker создаёт свежие случайные флаги на каждом запуске и проверяет их штатным путём. Он не предназначен для публикации в Интернет.
+Ожидаемый результат — пять строк `UP`. Checker создаёт свежие случайные флаги на каждом запуске и проверяет их штатным путём. Он не предназначен для публикации в Интернет.
 
 ## 3. Демонстрация атак
 
@@ -70,11 +74,15 @@ python checker.py --token 'replace-with-a-long-random-local-token' --team-user b
 python attack.py notes --base http://127.0.0.1:18081 --id 1
 python attack.py workflow --base http://127.0.0.1:18082
 python attack.py search --base http://127.0.0.1:18083
+python attack.py go-files --base http://127.0.0.1:18084
+python attack.py rust-profile --base http://127.0.0.1:18085
 ```
 
 - `notes` демонстрирует чтение чужого объекта через изменяемый ID.
 - `workflow` демонстрирует отгрузку до оплаты.
 - `search` демонстрирует SQL injection в собственном SQLite-сервисе.
+- `go-files` демонстрирует path traversal.
+- `rust-profile` демонстрирует mass assignment и повышение роли.
 
 Атакуйте только эти локальные targets. Не используйте примеры против сторонних сайтов или открытых IP.
 
@@ -93,7 +101,10 @@ docker compose up --build -d
 Invoke-RestMethod http://127.0.0.1:18081/health
 python checker.py --token 'replace-with-a-long-random-local-token' --team-user blue
 python attack.py workflow --base http://127.0.0.1:18082
+python attack.py go-files --base http://127.0.0.1:18084
+python attack.py rust-profile --base http://127.0.0.1:18085
 python test_lab.py
+python test_native_services.py
 ```
 
 В `health` должно быть `patched: true`. Checker должен пройти, а демонстрационные атаки должны перестать получать защищённые данные/переходы.
@@ -128,15 +139,15 @@ docker compose down -v
 Для каждого Compose project используйте отдельное имя, порты, `TEAM_ID` и token:
 
 ```powershell
-$env:TEAM_ID='blue'; $env:CHECKER_TOKEN='blue-token'; $env:NOTES_PORT='18081'; $env:WORKFLOW_PORT='18082'; $env:SEARCH_PORT='18083'; docker compose -p team-blue up --build -d
-$env:TEAM_ID='red'; $env:CHECKER_TOKEN='red-token'; $env:NOTES_PORT='18181'; $env:WORKFLOW_PORT='18182'; $env:SEARCH_PORT='18183'; docker compose -p team-red up --build -d
-$env:TEAM_ID='green'; $env:CHECKER_TOKEN='green-token'; $env:NOTES_PORT='18281'; $env:WORKFLOW_PORT='18282'; $env:SEARCH_PORT='18283'; docker compose -p team-green up --build -d
+$env:TEAM_ID='blue'; $env:CHECKER_TOKEN='blue-token'; $env:NOTES_PORT='18081'; $env:WORKFLOW_PORT='18082'; $env:SEARCH_PORT='18083'; $env:GO_FILES_PORT='18084'; $env:RUST_PROFILE_PORT='18085'; docker compose -p team-blue up --build -d
+$env:TEAM_ID='red'; $env:CHECKER_TOKEN='red-token'; $env:NOTES_PORT='18181'; $env:WORKFLOW_PORT='18182'; $env:SEARCH_PORT='18183'; $env:GO_FILES_PORT='18184'; $env:RUST_PROFILE_PORT='18185'; docker compose -p team-red up --build -d
+$env:TEAM_ID='green'; $env:CHECKER_TOKEN='green-token'; $env:NOTES_PORT='18281'; $env:WORKFLOW_PORT='18282'; $env:SEARCH_PORT='18283'; $env:GO_FILES_PORT='18284'; $env:RUST_PROFILE_PORT='18285'; docker compose -p team-green up --build -d
 ```
 
 Важно: значения переменных остаются в текущей PowerShell-сессии. Перед каждой командой задавайте все нужные значения явно. Checker для red:
 
 ```powershell
-python checker.py --notes http://127.0.0.1:18181 --workflow http://127.0.0.1:18182 --search http://127.0.0.1:18183 --token 'red-token' --team-user red
+python checker.py --notes http://127.0.0.1:18181 --workflow http://127.0.0.1:18182 --search http://127.0.0.1:18183 --go-files http://127.0.0.1:18184 --rust-profile http://127.0.0.1:18185 --token 'red-token' --team-user red
 ```
 
 Остановить только red:
@@ -175,11 +186,13 @@ docker compose ps -a
 docker compose logs notes
 docker compose logs workflow
 docker compose logs search
+docker compose logs go-files
+docker compose logs rust-profile
 ```
 
 ### Порт занят
 
-Поменяйте `NOTES_PORT`, `WORKFLOW_PORT` или `SEARCH_PORT` в `.env`. Внутренние порты `8081–8083` менять не нужно.
+Поменяйте `NOTES_PORT`, `WORKFLOW_PORT`, `SEARCH_PORT`, `GO_FILES_PORT` или `RUST_PROFILE_PORT` в `.env`. Внутренние порты `8081–8085` менять не нужно.
 
 ### Checker получает `403`
 

@@ -12,16 +12,26 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - uses: dtolnay/rust-toolchain@stable
       - name: Compile Python files
-        run: python -m py_compile app.py checker.py attack.py test_lab.py
+        run: python -m py_compile app.py checker.py attack.py test_lab.py test_native_services.py
       - name: Run localhost integration tests
         run: python test_lab.py
+      - name: Run native service smoke tests
+        run: python test_native_services.py
 
   docker-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build Docker image
-        run: docker build --tag adlab:ci .
+      - name: Build Python image
+        run: docker build --tag adlab-python:ci .
+      - name: Build Go image
+        run: docker build --tag adlab-go:ci ./go-files
+      - name: Build Rust image
+        run: docker build --tag adlab-rust:ci ./rust-profile
       - name: Validate Compose file
         run: docker compose config

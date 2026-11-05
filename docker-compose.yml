@@ -47,7 +47,39 @@ services:
       - search-data:/data
     restart: unless-stopped
 
+  go-files:
+    build:
+      context: ./go-files
+    environment:
+      TEAM_ID: ${TEAM_ID:-blue}
+      CHECKER_TOKEN: ${CHECKER_TOKEN:-local-only-change-me}
+      PATCHED: ${PATCHED:-0}
+      PORT: "8084"
+      DATA_ROOT: /data
+    ports:
+      - "127.0.0.1:${GO_FILES_PORT:-18084}:8084"
+    volumes:
+      - go-files-data:/data
+    restart: unless-stopped
+
+  rust-profile:
+    build:
+      context: ./rust-profile
+    environment:
+      TEAM_ID: ${TEAM_ID:-blue}
+      CHECKER_TOKEN: ${CHECKER_TOKEN:-local-only-change-me}
+      PATCHED: ${PATCHED:-0}
+      PORT: "8085"
+      DATA_ROOT: /data
+    ports:
+      - "127.0.0.1:${RUST_PROFILE_PORT:-18085}:8085"
+    volumes:
+      - rust-profile-data:/data
+    restart: unless-stopped
+
 volumes:
   notes-data:
   workflow-data:
   search-data:
+  go-files-data:
+  rust-profile-data:

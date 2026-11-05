@@ -82,17 +82,62 @@ def check_one(name: str, base: str, token: str, team_user: str) -> bool:
         return False
 
 
+def check_go_files(base: str, token: str) -> bool:
+    flag_id, flag = random_flag()
+    payload = {"flag_id": flag_id, "flag": flag}
+    try:
+        code, _ = request(base, "/health")
+        if code != 200:
+            raise RuntimeError(f"health returned {code}")
+        code, result = request(base, "/_checker/putflag", "POST", payload, token)
+        if code != 200:
+            raise RuntimeError(f"putflag returned {code}: {result}")
+        code, result = request(base, "/_checker/checkflag", token=token)
+        if code != 200 or flag not in str(result.get("stored", "")):
+            raise RuntimeError(f"flag readback failed: {result}")
+        print(f"[go-files] UP: putflag → readback; flag_id={flag_id}")
+        return True
+    except Exception as exc:
+        print(f"[go-files] FAIL: {exc}")
+        return False
+
+
+def check_rust_profile(base: str, token: str) -> bool:
+    flag_id, flag = random_flag()
+    payload = {"flag_id": flag_id, "flag": flag}
+    try:
+        code, _ = request(base, "/health")
+        if code != 200:
+            raise RuntimeError(f"health returned {code}")
+        code, result = request(base, "/_checker/putflag", "POST", payload, token)
+        if code != 200:
+            raise RuntimeError(f"putflag returned {code}: {result}")
+        code, result = request(base, "/_checker/checkflag", token=token)
+        stored = result.get("stored", {})
+        if code != 200 or stored.get("flag_id") != flag_id or stored.get("flag") != flag:
+            raise RuntimeError(f"flag readback failed: {result}")
+        print(f"[rust-profile] UP: putflag → readback; flag_id={flag_id}")
+        return True
+    except Exception as exc:
+        print(f"[rust-profile] FAIL: {exc}")
+        return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--notes", default="http://127.0.0.1:18081")
     parser.add_argument("--workflow", default="http://127.0.0.1:18082")
     parser.add_argument("--search", default="http://127.0.0.1:18083")
+    parser.add_argument("--go-files", default="http://127.0.0.1:18084")
+    parser.add_argument("--rust-profile", default="http://127.0.0.1:18085")
     parser.add_argument("--token", required=True)
     parser.add_argument("--team-user", default="blue", help="owner identity for checker readback")
     args = parser.parse_args()
     ok = True
     for name, url in [("notes", args.notes), ("workflow", args.workflow), ("search", args.search)]:
         ok = check_one(name, url, args.token, args.team_user) and ok
+    ok = check_go_files(args.go_files, args.token) and ok
+    ok = check_rust_profile(args.rust_profile, args.token) and ok
     return 0 if ok else 1
 
 if __name__ == "__main__":

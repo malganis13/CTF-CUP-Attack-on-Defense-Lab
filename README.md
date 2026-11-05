@@ -1,12 +1,14 @@
 # Attack_on_defense — домашний Attack–Defense-тренажёр
 
-Три небольших намеренно уязвимых HTTP-сервиса для практики команды:
+Пять небольших намеренно уязвимых HTTP-сервисов для практики команды:
 
-| Сервис | Порт по умолчанию | Тема | Что отрабатываем |
-|---|---:|---|---|
-| `notes` | 18081 | IDOR / BOLA | поиск объекта checker, чтение чужой приватной записи, исправление проверки владельца |
-| `workflow` | 18082 | логика бизнес-процесса | нарушение перехода `unpaid → shipped`, роль владельца, checker и регрессия |
-| `search` | 18083 | SQL injection | обнаружение SQL-конкатенации, безопасное чтение учебной флаговой записи, параметризованный patch |
+| Сервис | Порт по умолчанию | Язык | Тема | Что отрабатываем |
+|---|---:|---|---|---|
+| `notes` | 18081 | Python | IDOR / BOLA | поиск объекта checker, чтение чужой приватной записи, исправление проверки владельца |
+| `workflow` | 18082 | Python | бизнес-логика | нарушение перехода `unpaid → shipped`, роль владельца, checker и регрессия |
+| `search` | 18083 | Python | SQL injection | обнаружение SQL-конкатенации, чтение учебной флаговой записи, параметризованный patch |
+| `go-files` | 18084 | Go | path traversal | выход из public-каталога и защита нормализованного пути |
+| `rust-profile` | 18085 | Rust | mass assignment | повышение роли через клиентское поле и серверная авторизация |
 
 Каждый сервис — отдельное приложение и отдельная SQLite-база. Checker периодически генерирует **новые случайные** `flag_id` и `TRAINING{...}`, помещает их в сервис и проверяет штатный readback. Перезапуск раунда обновляет флаг. Флаги здесь учебные, не являются флагами финала.
 
@@ -42,6 +44,8 @@ docker compose ps
 http://127.0.0.1:18081/health
 http://127.0.0.1:18082/health
 http://127.0.0.1:18083/health
+http://127.0.0.1:18084/health
+http://127.0.0.1:18085/health
 ```
 
 5. Запустите функциональный checker. Подставьте тот же токен, что в `.env`:
@@ -50,9 +54,9 @@ http://127.0.0.1:18083/health
 python checker.py --token "local-only-change-me" --team-user blue
 ```
 
-Ожидается `UP: putflag → readback` для `notes`, `workflow`, `search`. Сохраните вывод и время как журнал раунда.
+Ожидается `UP: putflag → readback` для всех пяти сервисов: `notes`, `workflow`, `search`, `go-files`, `rust-profile`. Сохраните вывод и время как журнал раунда.
 
-Остановить сервисы:
+Остановить все пять сервисов:
 
 ```sh
 docker compose down
@@ -74,9 +78,11 @@ docker compose down -v
 python attack.py notes --base http://127.0.0.1:18081 --id 1
 python attack.py workflow --base http://127.0.0.1:18082
 python attack.py search --base http://127.0.0.1:18083
+python attack.py go-files --base http://127.0.0.1:18084
+python attack.py rust-profile --base http://127.0.0.1:18085
 ```
 
-Для `notes` найдите ID созданной checker-записи в `GET /api/notes` и передайте его через `--id`. Клиент посылает запрос как тестовый `mallory`; в уязвимом режиме handler возвращает чужой объект. Для `workflow` демонстрация пытается отгрузить тренировочный заказ без оплаты. Для `search` используется учебное изменение условия SQL-запроса. Эти примеры — только для собственных локальных targets.
+Для `notes` найдите ID созданной checker-записи в `GET /api/notes` и передайте его через `--id`. Клиент посылает запрос как тестовый `mallory`; в уязвимом режиме handler возвращает чужой объект. Для `workflow` демонстрация пытается отгрузить тренировочный заказ без оплаты. Для `search` используется учебное изменение SQL-запроса. `go-files` показывает выход через `..` из public-каталога, а `rust-profile` — повышение роли через mass assignment. Эти примеры — только для собственных локальных targets.
 
 После демонстрации:
 
@@ -85,6 +91,8 @@ python attack.py search --base http://127.0.0.1:18083
    - `notes`: всегда связывать ID записи с текущим пользователем (`WHERE id=? AND owner=?`); checker должен создавать запись в проверяемой команде.
    - `workflow`: атомарно проверять владельца и оплату до отгрузки; не возвращать delivery code до законного перехода состояния.
    - `search`: передавать значение в SQL отдельно: `WHERE title LIKE ?` с tuple параметров; имена колонок/сортировки — только allowlist.
+   - `go-files`: нормализовать путь и подтверждать, что он остаётся внутри `public`; лучше использовать allowlist файлов.
+   - `rust-profile`: не принимать `role` из публичного JSON; разделять DTO обновления профиля и серверную модель полномочий.
 3. Для Docker перезапустите с patch-режимом:
 
 ```sh
@@ -105,15 +113,15 @@ Compose project name создаёт отдельные контейнеры и v
 Пример для одного компьютера (каждый project — отдельный «target»):
 
 ```sh
-TEAM_ID=blue NOTES_PORT=18081 WORKFLOW_PORT=18082 SEARCH_PORT=18083 docker compose -p team-blue up --build -d
-TEAM_ID=red  NOTES_PORT=18181 WORKFLOW_PORT=18182 SEARCH_PORT=18183 docker compose -p team-red up --build -d
-TEAM_ID=green NOTES_PORT=18281 WORKFLOW_PORT=18282 SEARCH_PORT=18283 docker compose -p team-green up --build -d
+TEAM_ID=blue NOTES_PORT=18081 WORKFLOW_PORT=18082 SEARCH_PORT=18083 GO_FILES_PORT=18084 RUST_PROFILE_PORT=18085 docker compose -p team-blue up --build -d
+TEAM_ID=red  NOTES_PORT=18181 WORKFLOW_PORT=18182 SEARCH_PORT=18183 GO_FILES_PORT=18184 RUST_PROFILE_PORT=18185 docker compose -p team-red up --build -d
+TEAM_ID=green NOTES_PORT=18281 WORKFLOW_PORT=18282 SEARCH_PORT=18283 GO_FILES_PORT=18284 RUST_PROFILE_PORT=18285 docker compose -p team-green up --build -d
 ```
 
 Для каждого экземпляра задайте свой `CHECKER_TOKEN`; не используйте один production-секрет. На Windows PowerShell значения передавайте через env перед запуском, например:
 
 ```powershell
-$env:TEAM_ID='blue'; $env:NOTES_PORT='18081'; $env:WORKFLOW_PORT='18082'; $env:SEARCH_PORT='18083'; $env:CHECKER_TOKEN='blue-local-token'; docker compose -p team-blue up --build -d
+$env:TEAM_ID='blue'; $env:NOTES_PORT='18081'; $env:WORKFLOW_PORT='18082'; $env:SEARCH_PORT='18083'; $env:GO_FILES_PORT='18084'; $env:RUST_PROFILE_PORT='18085'; $env:CHECKER_TOKEN='blue-local-token'; docker compose -p team-blue up --build -d
 ```
 
 Замените `blue` на `red`/`green`, порты и токен — на соответствующие. Не запускайте два проекта на одинаковых портах. Проверить каждый экземпляр:
@@ -146,7 +154,7 @@ Docker Compose по умолчанию слушает только loopback. Д�
 
 1. Убедитесь, что VPN каждого участника работает и адреса видны между собой.
 2. В `docker-compose.yml` поменяйте публикации `127.0.0.1:...` на bind-адрес VPN-хоста, например `100.x.y.z:18081:8081` (укажите именно адрес хоста в приватной VPN-сети; синтаксис `host-ip:host-port:container-port`). Не используйте `0.0.0.0`, если это не нужно.
-3. В firewall разрешите порты 18081–18083 только для VPN-интерфейса/подсети и участников команды; убедитесь с другого устройства, что они доступны по VPN, но не по обычному публичному адресу.
+3. В firewall разрешите порты 18081–18085 только для VPN-интерфейса/подсети и участников команды; убедитесь с другого устройства, что они доступны по VPN, но не по обычному публичному адресу.
 4. В `checker.py`/`attack.py` указывайте приватный VPN IP машины с сервисом, например `http://100.x.y.z:18081`.
 5. Никогда не публикуйте `/_checker/*` или этот учебный стенд на публичный IP без VPN, allowlist/firewall и отдельного осознанного согласования команды. Не делайте проброс портов на домашнем роутере. Не отключайте firewall «для удобства».
 
@@ -224,8 +232,11 @@ Checker после patch:
 
 ## Файлы
 
-- `app.py` — три учебных HTTP-сервиса и две реализации поведения: уязвимая и защитная.
-- `checker.py` — создание свежего флага и функциональная проверка сохранения/readback.
-- `attack.py` — минимальные учебные клиенты для трёх классов уязвимостей.
-- `docker-compose.yml`, `Dockerfile`, `.env.example` — локальное развёртывание.
-- `requirements.txt` — внешние зависимости не требуются.
+- `app.py` — три Python-сервиса и две реализации поведения: уязвимая и защитная.
+- `go-files/` — отдельный Go-сервис с собственным Dockerfile.
+- `rust-profile/` — отдельный Rust-сервис с Cargo-проектом и Dockerfile.
+- `checker.py` — создание свежих флагов и функциональная проверка всех пяти сервисов.
+- `attack.py` — минимальные учебные клиенты для пяти классов уязвимостей.
+- `test_lab.py`, `test_native_services.py` — локальные интеграционные и native smoke-тесты.
+- `docker-compose.yml`, Dockerfiles, `.env.example` — локальное развёртывание.
+- `requirements.txt` — внешние Python-зависимости не требуются.
