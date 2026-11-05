@@ -1,0 +1,53 @@
+services:
+  notes:
+    build: .
+    environment:
+      SERVICE: notes
+      HOST: 0.0.0.0
+      TEAM_ID: ${TEAM_ID:-blue}
+      CHECKER_TOKEN: ${CHECKER_TOKEN:-local-only-change-me}
+      PATCHED: ${PATCHED:-0}
+      PORT: "8081"
+      DB_PATH: /data/notes.sqlite3
+    ports:
+      - "127.0.0.1:${NOTES_PORT:-18081}:8081"
+    volumes:
+      - notes-data:/data
+    restart: unless-stopped
+
+  workflow:
+    build: .
+    environment:
+      SERVICE: workflow
+      HOST: 0.0.0.0
+      TEAM_ID: ${TEAM_ID:-blue}
+      CHECKER_TOKEN: ${CHECKER_TOKEN:-local-only-change-me}
+      PATCHED: ${PATCHED:-0}
+      PORT: "8082"
+      DB_PATH: /data/workflow.sqlite3
+    ports:
+      - "127.0.0.1:${WORKFLOW_PORT:-18082}:8082"
+    volumes:
+      - workflow-data:/data
+    restart: unless-stopped
+
+  search:
+    build: .
+    environment:
+      SERVICE: search
+      HOST: 0.0.0.0
+      TEAM_ID: ${TEAM_ID:-blue}
+      CHECKER_TOKEN: ${CHECKER_TOKEN:-local-only-change-me}
+      PATCHED: ${PATCHED:-0}
+      PORT: "8083"
+      DB_PATH: /data/search.sqlite3
+    ports:
+      - "127.0.0.1:${SEARCH_PORT:-18083}:8083"
+    volumes:
+      - search-data:/data
+    restart: unless-stopped
+
+volumes:
+  notes-data:
+  workflow-data:
+  search-data:
