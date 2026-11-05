@@ -75,7 +75,7 @@ def check_one(name: str, base: str, token: str, team_user: str) -> bool:
             if code != 200:
                 raise RuntimeError(f"checkflag returned {code}: {read}")
 
-        print(f"[{name}] UP: putflag → readback; flag_id={flag_id}")
+        print(f"[{name}] UP: putflag -> readback; flag_id={flag_id}")
         return True
     except Exception as exc:
         print(f"[{name}] FAIL: {exc}")
@@ -95,7 +95,7 @@ def check_go_files(base: str, token: str) -> bool:
         code, result = request(base, "/_checker/checkflag", token=token)
         if code != 200 or flag not in str(result.get("stored", "")):
             raise RuntimeError(f"flag readback failed: {result}")
-        print(f"[go-files] UP: putflag → readback; flag_id={flag_id}")
+        print(f"[go-files] UP: putflag -> readback; flag_id={flag_id}")
         return True
     except Exception as exc:
         print(f"[go-files] FAIL: {exc}")
@@ -116,7 +116,7 @@ def check_rust_profile(base: str, token: str) -> bool:
         stored = result.get("stored", {})
         if code != 200 or stored.get("flag_id") != flag_id or stored.get("flag") != flag:
             raise RuntimeError(f"flag readback failed: {result}")
-        print(f"[rust-profile] UP: putflag → readback; flag_id={flag_id}")
+        print(f"[rust-profile] UP: putflag -> readback; flag_id={flag_id}")
         return True
     except Exception as exc:
         print(f"[rust-profile] FAIL: {exc}")

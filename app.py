@@ -145,6 +145,11 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/_checker/"):
             if not self.checker_ok():
                 self.send_json(403, {"error": "checker authentication required"}); return
+            if path.startswith("/_checker/pay/") and SERVICE == "workflow":
+                order_id = path.rsplit("/", 1)[1]
+                with connect() as db:
+                    db.execute("UPDATE orders SET paid=1 WHERE id=? AND owner=? AND item='checker-package'", (order_id, TEAM_ID))
+                self.send_json(200, {"status": "paid"}); return
             data = self.body_json()
             flag = str(data.get("flag", ""))[:256]
             flag_id = str(data.get("flag_id", ""))[:128]
