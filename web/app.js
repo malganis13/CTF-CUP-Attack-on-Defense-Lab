@@ -1,21 +1,22 @@
 /* Аудит A/D — клиент. Без зависимостей и сборки. */
 "use strict";
 
-const $ = (selector) => document.querySelector(selector);
-const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+const $ = (selector, root) => (root || document).querySelector(selector);
+const $$ = (selector, root) => Array.from((root || document).querySelectorAll(selector));
 
-const state = {
-  config: { target: {} },
-  demo: false,
-  audit: null,
-  findings: [],
-  filter: { q: "", sev: "", kind: "" },
-  activeFinding: null,
-  activeFile: null,
-  probe: null,
-  probeResult: null,
-  report: null,
+const TITLES = {
+  connect: ["Подключение", "укажите хост и пользователя"],
+  audit: ["Аудит", "сбор портов, процессов и исходников"],
+  services: ["Сервисы", "порты, процессы, стеки"],
+  findings: ["Находки", "что нашлось и где именно"],
+  files: ["Файлы", "исходники на цели"],
+  generator: ["Генератор", "проба и заготовка"],
+  report: ["Отчёт", "markdown для команды"],
+  rules: ["Правила", "что именно ищет сканер"],
+  knowledge: ["База знаний", "регламент, патчи, оценка"],
 };
+
+const ORDER = ["connect", "audit", "services", "findings", "files", "generator", "report", "rules", "knowledge"];
 
 const SEV_ORDER = { high: 0, medium: 1, low: 2, info: 3 };
 
@@ -35,6 +36,22 @@ const SUMMARY_RU = {
   blocked: "заблокировано",
 };
 
+const state = {
+  config: { target: {} },
+  demo: false,
+  audit: null,
+  findings: [],
+  filter: { q: "", sev: "", kind: "" },
+  svcFilter: "",
+  rulesFilter: "",
+  activeFinding: null,
+  activeFile: null,
+  probe: null,
+  probeResult: null,
+  report: null,
+  budget: null,
+};
+
 /* ---------- утилиты ---------- */
 
 function el(tag, className, text) {
@@ -42,6 +59,13 @@ function el(tag, className, text) {
   if (className) node.className = className;
   if (text !== undefined && text !== null) node.textContent = String(text);
   return node;
+}
+
+function esc(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function setStatus(node, text, kind) {
@@ -53,14 +77,23 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function toast(message, kind) {
+  const box = $("#toasts");
+  const node = el("div", "toast" + (kind ? " " + kind : ""), message);
+  box.appendChild(node);
+  setTimeout(() => {
+    node.classList.add("out");
+    setTimeout(() => node.remove(), 200);
+  }, 2800);
+}
+
 async function api(path, options) {
   const response = await fetch(path, Object.assign({ headers: { "Content-Type": "application/json" } }, options || {}));
   const text = await response.text();
   let body = null;
   try { body = text ? JSON.parse(text) : null; } catch (_) { body = { raw: text }; }
   if (!response.ok) {
-    const message = body && (body.error || body.raw) ? (body.error || body.raw) : response.statusText;
-    throw new Error(message);
+    throw new Error((body && (body.error || body.raw)) || response.statusText);
   }
   return body;
 }
@@ -94,31 +127,154 @@ function download(name, text) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-/* ---------- вкладки ---------- */
+/* ---------- мини-markdown ---------- */
 
-function showTab(name) {
+function inline(text) {
+  return esc(text)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+}
+
+function mdToHtml(text) {
+  const lines = String(text || "").split("\n");
+  const out = [];
+  let inCode = false;
+  let code = [];
+  let inList = false;
+  let table = [];
+
+  const flushList = () => { if (inList) { out.push("</ul>"); inList = false; } };
+  const flushTable = () => {
+    if (!table.length) return;
+    const rows = table.filter((row) => !/^\|[\s:|-]+\|$/.test(row));
+    const cells = rows.map((row) => row.replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim()));
+    if (cells.length) {
+      const head = cells.shift();
+      out.push("<div class='table-wrap' style='margin:12px 0'><table><thead><tr>" +
+        head.map((cell) => `<th>${inline(cell)}</th>`).join("") + "</tr></thead><tbody>" +
+        cells.map((row) => "<tr>" + row.map((cell) => `<td>${inline(cell)}</td>`).join("") + "</tr>").join("") +
+        "</tbody></table></div>");
+    }
+    table = [];
+  };
+
+  for (const line of lines) {
+    if (line.trim().startsWith("```")) {
+      if (inCode) { out.push(`<pre class="code" style="margin:10px 0">${esc(code.join("\n"))}</pre>`); code = []; inCode = false; }
+      else { flushList(); flushTable(); inCode = true; }
+      continue;
+    }
+    if (inCode) { code.push(line); continue; }
+    if (/^\|/.test(line.trim())) { flushList(); table.push(line.trim()); continue; }
+    flushTable();
+    if (!line.trim()) { flushList(); continue; }
+    const heading = /^(#{1,4})\s+(.*)$/.exec(line);
+    if (heading) {
+      flushList();
+      const level = heading[1].length;
+      out.push(`<h${level} style="margin:14px 0 6px">${inline(heading[2])}</h${level}>`);
+      continue;
+    }
+    const bullet = /^\s*[-*]\s+(.*)$/.exec(line);
+    if (bullet) {
+      if (!inList) { out.push("<ul style='margin:8px 0;padding-left:20px'>"); inList = true; }
+      out.push(`<li>${inline(bullet[1])}</li>`);
+      continue;
+    }
+    out.push(`<p style="margin:8px 0">${inline(line)}</p>`);
+  }
+  if (inCode) out.push(`<pre class="code">${esc(code.join("\n"))}</pre>`);
+  flushList();
+  flushTable();
+  return out.join("");
+}
+
+/* ---------- навигация ---------- */
+
+function showTab(name, push) {
+  if (!TITLES[name]) name = "connect";
   $$("#tabs button").forEach((button) => button.classList.toggle("active", button.dataset.tab === name));
   $$(".panel").forEach((panel) => panel.classList.toggle("active", panel.id === "panel-" + name));
+  const [title, sub] = TITLES[name];
+  $("#page-title").textContent = title;
+  $("#page-sub").textContent = sub;
+  if (push !== false && location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
 }
 
 $$("#tabs button").forEach((button) => {
   button.addEventListener("click", () => showTab(button.dataset.tab));
 });
 
+/* ---------- бюджет ---------- */
+
+function renderBudget(budget) {
+  if (budget) state.budget = budget;
+  const data = state.budget;
+  if (!data) return;
+  const used = Math.max(0, Math.min(data.capacity, data.used || 0));
+  const percent = Math.round((used / Math.max(1, data.capacity)) * 100);
+  $("#budget-text").textContent = `${used}/${data.capacity}`;
+  const fill = $("#budget-fill");
+  fill.style.width = percent + "%";
+  fill.className = "fill" + (percent >= 95 ? " full" : percent >= 60 ? " warn" : "");
+}
+
+/* ---------- быстрый старт ---------- */
+
+function renderSteps() {
+  const target = state.config.target || {};
+  const done = [
+    Boolean(target.host && target.user),
+    Boolean(state.audit),
+    Boolean(state.activeFinding),
+    Boolean(state.probeResult),
+  ];
+  const ids = ["step-connect", "step-audit", "step-finding", "step-probe"];
+  let current = -1;
+  ids.forEach((id, index) => {
+    const node = document.getElementById(id);
+    if (!node) return;
+    node.classList.toggle("done", done[index]);
+    node.classList.toggle("current", false);
+    if (current === -1 && !done[index]) current = index;
+  });
+  if (current >= 0) {
+    const node = document.getElementById(ids[current]);
+    if (node) node.classList.add("current");
+  }
+}
+
+function renderBadges() {
+  const target = state.config.target || {};
+  const connected = Boolean(target.host && target.user);
+  $("#chip-target").className = "chip " + (connected ? "on" : "off");
+  $("#chip-target-text").textContent = connected ? `${target.user}@${target.host}:${target.port || 22}` : "не подключено";
+  $("#chip-demo").hidden = !state.demo;
+
+  const counts = (state.audit && state.audit.counts) || {};
+  const chip = $("#chip-audit");
+  if (!state.audit) {
+    chip.className = "chip off";
+    $("#chip-audit-text").textContent = "аудита нет";
+  } else {
+    chip.className = "chip " + ((counts.high || 0) > 0 ? "demo" : "on");
+    $("#chip-audit-text").textContent = `${counts.high || 0} high · ${counts.medium || 0} med`;
+  }
+  $("#nav-findings").textContent = state.findings.length;
+  $("#brand-version").textContent = state.version ? "v" + state.version : "v—";
+  renderSteps();
+}
+
 /* ---------- подключение ---------- */
 
 function fillForm() {
-  const target = (state.config && state.config.target) || {};
+  const target = state.config.target || {};
   $("#cfg-host").value = target.host || "";
   $("#cfg-port").value = target.port || 22;
   $("#cfg-user").value = target.user || "root";
   $("#cfg-auth").value = target.auth === "password" ? "password" : "key";
   $("#cfg-key").value = target.key_path || "";
   $("#password-row").hidden = $("#cfg-auth").value !== "password";
-  const connected = Boolean(target.host && target.user);
-  const badge = $("#badge-target");
-  badge.textContent = connected ? `${target.user}@${target.host}:${target.port || 22}` : "не подключено";
-  badge.className = "badge" + (connected ? " on" : " off");
 }
 
 $("#cfg-auth").addEventListener("change", () => {
@@ -140,10 +296,12 @@ $("#btn-save").addEventListener("click", async () => {
     if ($("#cfg-auth").value === "password") body.password = $("#cfg-password").value;
     const result = await api("/api/config", { method: "POST", body: JSON.stringify(body) });
     state.config = result.state;
-    fillForm();
+    renderBadges();
     setStatus(status, "сохранено", "ok");
+    toast("Цель сохранена", "ok");
   } catch (error) {
     setStatus(status, error.message, "bad");
+    toast(error.message, "bad");
   }
 });
 
@@ -156,10 +314,12 @@ $("#btn-test").addEventListener("click", async () => {
     log.hidden = false;
     log.textContent = `бэкенд: ${result.backend}\n$ id\n${result.output}`;
     setStatus(status, "связь есть", "ok");
+    toast("Связь установлена", "ok");
   } catch (error) {
     log.hidden = false;
     log.textContent = error.message;
     setStatus(status, "не вышло", "bad");
+    toast(error.message, "bad");
   }
 });
 
@@ -196,10 +356,12 @@ $("#btn-audit").addEventListener("click", async () => {
     ingest(job.result);
     bar.className = "bar done";
     setStatus(status, "готово", "ok");
+    toast(`Аудит готов: ${state.findings.length} находок`, "ok");
     showTab("findings");
   } catch (error) {
     bar.className = "bar error";
     setStatus(status, error.message, "bad");
+    toast(error.message, "bad");
   } finally {
     button.disabled = false;
   }
@@ -218,22 +380,11 @@ function ingest(audit) {
   if (state.activeFinding) setGeneratorFinding(state.activeFinding);
 }
 
-function renderBadges() {
-  const counts = (state.audit && state.audit.counts) || {};
-  const badge = $("#badge-counts");
-  if (!state.audit) {
-    badge.textContent = "аудита нет";
-    return;
-  }
-  badge.textContent = `${counts.high || 0} high · ${counts.medium || 0} med · ${counts.low || 0} low`;
-  badge.className = "badge" + (counts.high ? " off" : " on");
-}
-
 function renderSummary() {
   const audit = state.audit;
   if (!audit) return;
   const counts = audit.counts || {};
-  $("#audit-summary").hidden = false;
+  $("#audit-summary-card").hidden = false;
   $("#sum-high").textContent = counts.high || 0;
   $("#sum-medium").textContent = counts.medium || 0;
   $("#sum-low").textContent = counts.low || 0;
@@ -250,22 +401,36 @@ function renderSummary() {
   });
 }
 
+$$("#audit-tiles .tile").forEach((tile) => {
+  tile.addEventListener("click", () => {
+    state.filter.sev = tile.dataset.sev || "";
+    setSevChip(state.filter.sev);
+    renderFindings();
+    showTab("findings");
+  });
+});
+
 /* ---------- сервисы ---------- */
 
 function renderServices() {
   const body = $("#services-table tbody");
   body.textContent = "";
-  const services = (state.audit && state.audit.services) || [];
+  const services = ((state.audit && state.audit.services) || []).filter((service) => {
+    const needle = state.svcFilter.trim().toLowerCase();
+    if (!needle) return true;
+    return `${service.port} ${service.service} ${service.stack} ${service.cwd}`.toLowerCase().includes(needle);
+  });
+  $("#svc-count").textContent = state.audit ? `${services.length} из ${(state.audit.services || []).length}` : "";
   if (!services.length) {
     const row = el("tr");
-    const cell = el("td", "empty", "слушающих сервисов не найдено");
+    const cell = el("td", "empty", state.audit ? "нет совпадений" : "запустите аудит");
     cell.colSpan = 7;
     row.appendChild(cell);
     body.appendChild(row);
     return;
   }
   services.forEach((service) => {
-    const row = el("tr");
+    const row = el("tr", "clickable");
     row.appendChild(el("td", "cell-mono", service.port));
     row.appendChild(el("td", "cell-mono", service.proto));
     row.appendChild(el("td", "cell-mono", service.service || service.process || "?"));
@@ -276,7 +441,7 @@ function renderServices() {
     row.appendChild(el("td", "cell-mono", service.pid ?? "—"));
     row.appendChild(el("td", "cell-mono", service.cwd || "—"));
     const cmd = el("td", "cell-mono", service.cmdline || "—");
-    cmd.style.maxWidth = "420px";
+    cmd.style.maxWidth = "380px";
     cmd.style.overflow = "hidden";
     cmd.style.textOverflow = "ellipsis";
     cmd.style.whiteSpace = "nowrap";
@@ -293,6 +458,11 @@ function renderServices() {
   });
 }
 
+$("#svc-search").addEventListener("input", (event) => {
+  state.svcFilter = event.target.value;
+  renderServices();
+});
+
 /* ---------- находки ---------- */
 
 function renderKindFilter() {
@@ -306,6 +476,10 @@ function renderKindFilter() {
   state.filter.kind = select.value;
 }
 
+function setSevChip(sev) {
+  $$("#sev-chips .sev-chip").forEach((chip) => chip.classList.toggle("active", chip.dataset.sev === sev));
+}
+
 function visibleFindings() {
   const { q, sev, kind } = state.filter;
   const needle = q.trim().toLowerCase();
@@ -313,8 +487,7 @@ function visibleFindings() {
     if (sev && item.severity !== sev) return false;
     if (kind && item.kind !== kind) return false;
     if (!needle) return true;
-    const haystack = `${item.kind} ${item.file} ${item.snippet} ${item.rule}`.toLowerCase();
-    return haystack.includes(needle);
+    return `${item.kind} ${item.file} ${item.snippet} ${item.rule} ${item.language}`.toLowerCase().includes(needle);
   });
 }
 
@@ -322,9 +495,9 @@ function renderFindings() {
   const list = $("#findings-list");
   list.textContent = "";
   const items = visibleFindings();
-  $("#f-count").textContent = `${items.length} / ${state.findings.length}`;
+  $("#f-count").textContent = `${items.length} из ${state.findings.length}`;
   if (!items.length) {
-    list.appendChild(el("div", "empty", state.findings.length ? "нет совпадений" : "запустите аудит"));
+    list.appendChild(el("div", "empty", state.findings.length ? "нет совпадений — сбросьте фильтры" : "запустите аудит"));
     return;
   }
   items.forEach((finding) => {
@@ -332,10 +505,10 @@ function renderFindings() {
     item.dataset.id = finding.id;
     if (state.activeFinding && state.activeFinding.id === finding.id) item.classList.add("active");
     item.appendChild(el("span", "pill " + finding.severity, finding.severity));
-    const text = el("div", "t");
-    text.appendChild(el("b", null, finding.kind));
-    text.appendChild(el("small", null, `${finding.file}:${finding.line}`));
-    item.appendChild(text);
+    const body = el("div", "body");
+    body.appendChild(el("b", null, finding.kind));
+    body.appendChild(el("small", null, `${finding.file}:${finding.line}`));
+    item.appendChild(body);
     item.addEventListener("click", () => selectFinding(finding));
     list.appendChild(item);
   });
@@ -346,22 +519,23 @@ function selectFinding(finding) {
   $$("#findings-list .item").forEach((node) => node.classList.toggle("active", node.dataset.id === finding.id));
   renderFindingDetail(finding);
   setGeneratorFinding(finding);
+  renderSteps();
 }
 
 function renderFindingDetail(finding) {
   const detail = $("#finding-detail");
   detail.textContent = "";
-  const body = el("div", "body");
 
-  const head = el("div");
+  const head = el("div", "head");
   head.appendChild(el("h3", null, finding.kind));
   head.appendChild(el("div", "loc", `${finding.file}:${finding.line} · правило ${finding.rule} · ${finding.language || "text"}`));
-  body.appendChild(head);
+  const chips = el("div", "row tight");
+  chips.appendChild(el("span", "pill " + finding.severity, finding.severity));
+  chips.appendChild(el("span", "pill soft", "риск для чекера: " + (finding.checker_risk || "low")));
+  head.appendChild(chips);
+  detail.appendChild(head);
 
-  const meta = el("div", "row");
-  meta.appendChild(el("span", "pill " + finding.severity, finding.severity));
-  meta.appendChild(el("span", "pill", "риск для чекера: " + (finding.checker_risk || "low")));
-  body.appendChild(meta);
+  const body = el("div", "body");
 
   const why = el("div", "block");
   why.appendChild(el("h4", null, "почему сработало"));
@@ -379,19 +553,17 @@ function renderFindingDetail(finding) {
   const start = finding.context_start || Math.max(1, finding.line - (finding.context ? finding.context.length : 1) + 1);
   (finding.context || []).forEach((line, index) => {
     const number = start + index;
-    box.appendChild(el("div", number === finding.line ? "mark" : null, `${String(number).padStart(4)}  ${line}`));
+    const mark = number === finding.line ? `mark ${finding.severity}` : "";
+    box.appendChild(el("div", mark, `${String(number).padStart(4)}  ${line}`));
   });
   ctx.appendChild(box);
   body.appendChild(ctx);
 
   const actions = el("div", "row");
-  const generate = el("button", "primary", "В генератор");
-  generate.addEventListener("click", () => {
-    setGeneratorFinding(finding);
-    showTab("generator");
-  });
+  const generate = el("button", "primary small", "В генератор");
+  generate.addEventListener("click", () => { showTab("generator"); });
   actions.appendChild(generate);
-  const open = el("button", null, "Открыть файл");
+  const open = el("button", "ghost small", "Открыть файл");
   open.addEventListener("click", () => {
     showTab("files");
     readFile(finding.file);
@@ -400,20 +572,22 @@ function renderFindingDetail(finding) {
   body.appendChild(actions);
 
   detail.appendChild(body);
-  detail.scrollIntoView({ block: "nearest" });
 }
 
 $("#f-search").addEventListener("input", (event) => {
   state.filter.q = event.target.value;
   renderFindings();
 });
-$("#f-sev").addEventListener("change", (event) => {
-  state.filter.sev = event.target.value;
-  renderFindings();
-});
 $("#f-kind").addEventListener("change", (event) => {
   state.filter.kind = event.target.value;
   renderFindings();
+});
+$$("#sev-chips .sev-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    state.filter.sev = chip.dataset.sev || "";
+    setSevChip(state.filter.sev);
+    renderFindings();
+  });
 });
 
 /* ---------- файлы ---------- */
@@ -428,11 +602,11 @@ async function listPath(path) {
     if (!result.entries.length) list.appendChild(el("div", "empty", "пусто или нет доступа"));
     result.entries.forEach((entry) => {
       const item = el("div", "item");
-      item.appendChild(el("span", "pill", entry.type === "dir" ? "кат" : "файл"));
-      const text = el("div", "t");
-      text.appendChild(el("b", null, entry.name));
-      text.appendChild(el("small", null, entry.size === null || entry.size === undefined ? "" : entry.size + " Б"));
-      item.appendChild(text);
+      item.appendChild(el("span", "pill soft", entry.type === "dir" ? "кат" : "файл"));
+      const body = el("div", "body");
+      body.appendChild(el("b", null, entry.name));
+      body.appendChild(el("small", null, entry.size === null || entry.size === undefined ? "" : entry.size + " Б"));
+      item.appendChild(body);
       item.addEventListener("click", () => {
         const next = path.replace(/\/+$/, "") + "/" + entry.name;
         $("#path-input").value = next;
@@ -454,8 +628,10 @@ async function readFile(path) {
   try {
     const result = await api("/api/file?path=" + encodeURIComponent(path));
     $("#path-input").value = path;
-    $("#file-path").textContent = result.path || path;
-    state.activeFile = result.path || path;
+    const head = $("#file-path");
+    head.textContent = path;
+    head.title = result.path && result.path !== path ? "на диске: " + result.path : path;
+    state.activeFile = path;
     view.textContent = "";
     if (result.binary) {
       view.appendChild(el("div", "empty", "двоичный файл — не показываю"));
@@ -469,6 +645,7 @@ async function readFile(path) {
         hits.set(finding.line, finding);
       }
     });
+    $("#file-legend").hidden = hits.size === 0;
     const scroll = el("div", "code-scroll");
     const lines = result.lines || [];
     const cap = Math.min(lines.length, 4000);
@@ -541,9 +718,10 @@ function setGeneratorFinding(finding) {
   $("#g-endpoint").value = endpointFor(finding);
   const host = (state.config.target && state.config.target.host) || "";
   $("#g-base").value = `http://${host || "127.0.0.1"}:${port}`;
-  $("#g-lint").hidden = true;
+  $("#g-lint-card").hidden = true;
   $("#g-requests-wrap").hidden = true;
   $("#g-result").hidden = true;
+  $("#g-mode").hidden = true;
   $("#g-output").textContent = "";
   $("#g-output").appendChild(el("div", "empty", "нажмите «Сгенерировать»"));
 }
@@ -553,6 +731,7 @@ $("#btn-generate").addEventListener("click", async () => {
   const status = $("#g-status");
   if (!finding) {
     setStatus(status, "сначала выберите находку", "bad");
+    toast("Сначала выберите находку во вкладке «Находки»", "warn");
     return;
   }
   setStatus(status, "собираю…");
@@ -568,35 +747,37 @@ $("#btn-generate").addEventListener("click", async () => {
     });
     state.probe = result;
     $("#g-output").textContent = result.code;
+    const mode = $("#g-mode");
+    mode.hidden = false;
+    mode.textContent = result.manual ? "заготовка · вручную" : "проба · GET";
     renderLint(result);
-    renderRequests(result.requests || []);
-    setStatus(
-      status,
-      result.manual ? "заготовка: только вручную" : `запросов: ${(result.requests || []).length}`,
-      result.manual ? "bad" : "ok"
-    );
+    renderRequests(result.requests || [], result);
+    setStatus(status, result.manual ? "заготовка: только вручную" : `запросов: ${(result.requests || []).length}`,
+      result.manual ? "warn" : "ok");
   } catch (error) {
     setStatus(status, error.message, "bad");
+    toast(error.message, "bad");
   }
 });
 
 function renderLint(result) {
+  const card = $("#g-lint-card");
   const lint = $("#g-lint");
-  lint.hidden = false;
+  card.hidden = false;
   const errors = (result.lint && result.lint.errors) || [];
   const warnings = (result.lint && result.lint.warnings) || [];
   if (result.lint && result.lint.ok) {
-    lint.className = "lint ok";
+    lint.className = "lint " + (warnings.length ? "warn" : "ok");
     lint.textContent = warnings.length
       ? `линтер (${result.lint.mode}): без ошибок, предупреждений ${warnings.length}\n` + warnings.join("\n")
       : `линтер (${result.lint.mode}): чисто`;
   } else {
-    lint.className = "lint";
+    lint.className = "lint bad";
     lint.textContent = `линтер (${result.lint.mode}): отклонено\n` + errors.join("\n");
   }
 }
 
-function renderRequests(requests) {
+function renderRequests(requests, result) {
   const wrap = $("#g-requests-wrap");
   const body = $("#g-requests tbody");
   body.textContent = "";
@@ -604,6 +785,10 @@ function renderRequests(requests) {
     wrap.hidden = true;
     return;
   }
+  const manual = Boolean(result && result.manual);
+  $("#g-requests-summary").textContent = manual
+    ? "Заготовка: один запрос, меняющий состояние. По умолчанию только печатается."
+    : `Только GET. Максимум 14 запросов, пауза 0.15 с. Бюджет процесса — 30 запросов в минуту.`;
   requests.forEach((request) => {
     const row = el("tr");
     row.appendChild(el("td", "cell-mono", request.label || "—"));
@@ -624,6 +809,7 @@ $("#btn-run-probe").addEventListener("click", async () => {
   const base = $("#g-base").value.trim();
   if (!base.startsWith("http")) {
     setStatus(status, "нужен базовый URL вида http://host:port", "bad");
+    toast("Базовый URL должен начинаться с http://", "warn");
     return;
   }
   setStatus(status, "проба идёт…");
@@ -640,11 +826,18 @@ $("#btn-run-probe").addEventListener("click", async () => {
       }),
     });
     state.probeResult = result;
+    renderBudget(result.budget);
     renderEvidence(result);
+    renderSteps();
     const verdict = SUMMARY_RU[result.summary.verdict] || result.summary.verdict;
     setStatus(status, `вердикт: ${verdict}`, result.summary.verdict === "confirmed" ? "ok" : "");
+    toast(`Проба: ${verdict}`, result.summary.verdict === "confirmed" ? "ok" : "warn");
+    if (result.summary.verdict === "manual") {
+      toast("Этот класс проверяется только заготовкой вручную", "warn");
+    }
   } catch (error) {
     setStatus(status, error.message, "bad");
+    toast(error.message, "bad");
   } finally {
     $("#btn-run-probe").disabled = false;
   }
@@ -659,7 +852,7 @@ function renderEvidence(result) {
   const budget = result.budget || null;
   $("#g-verdict").textContent = (SUMMARY_RU[summary.verdict] || summary.verdict || "") +
     ` · запросов ${summary.requests ?? 0}, сигналов ${summary.signals ?? 0}, отличий ${summary.diffs ?? 0}` +
-    (budget ? ` · бюджет ${budget.used}/${budget.capacity} за ${Math.round(budget.window)} с` : "");
+    (budget ? ` · бюджет ${budget.used}/${budget.capacity}` : "");
 
   if (!(result.results || []).length) {
     const row = el("tr");
@@ -679,20 +872,24 @@ function renderEvidence(result) {
     const verdict = el("td");
     verdict.appendChild(el("span", "pill verdict-" + row.verdict, VERDICT_RU[row.verdict] || row.verdict));
     tr.appendChild(verdict);
-    tr.appendChild(el("td", "mono-small", row.evidence || ""));
+    const evidence = el("td", "cell-mono", row.evidence || "");
+    evidence.style.fontSize = "11.5px";
+    evidence.style.color = "var(--muted)";
+    tr.appendChild(evidence);
     body.appendChild(tr);
   });
 }
 
 $("#btn-copy-probe").addEventListener("click", async () => {
-  if (!state.probe) return;
+  if (!state.probe) { toast("Сначала сгенерируйте", "warn"); return; }
   await copyText(state.probe.code);
-  setStatus($("#g-status"), "скопировано", "ok");
+  toast("Код скопирован", "ok");
 });
 
 $("#btn-save-probe").addEventListener("click", () => {
-  if (!state.probe) return;
+  if (!state.probe) { toast("Сначала сгенерируйте", "warn"); return; }
   download(`${state.probe.name || "probe"}.py`, state.probe.code);
+  toast("Файл скачан", "ok");
 });
 
 /* ---------- отчёт ---------- */
@@ -705,42 +902,68 @@ $("#btn-report").addEventListener("click", async () => {
     state.report = result.markdown;
     $("#r-output").textContent = result.markdown;
     setStatus(status, `строк: ${result.markdown.split("\n").length}`, "ok");
+    toast("Отчёт собран", "ok");
   } catch (error) {
     setStatus(status, error.message, "bad");
+    toast(error.message, "bad");
   }
 });
 
 $("#btn-copy-report").addEventListener("click", async () => {
-  if (!state.report) return;
+  if (!state.report) { toast("Сначала соберите отчёт", "warn"); return; }
   await copyText(state.report);
-  setStatus($("#r-status"), "скопировано", "ok");
+  toast("Отчёт скопирован", "ok");
 });
 
 $("#btn-save-report").addEventListener("click", () => {
-  if (!state.report) return;
+  if (!state.report) { toast("Сначала соберите отчёт", "warn"); return; }
   download("ad-audit-report.md", state.report);
+  toast("Файл скачан", "ok");
 });
 
 /* ---------- правила ---------- */
 
+let rulesCache = [];
+
+function renderRules() {
+  const body = $("#rules-table tbody");
+  body.textContent = "";
+  const needle = state.rulesFilter.trim().toLowerCase();
+  const rules = rulesCache.filter((rule) => {
+    if (!needle) return true;
+    return `${rule.id} ${rule.kind} ${(rule.languages || []).join(" ")}`.toLowerCase().includes(needle);
+  });
+  rules.forEach((rule) => {
+    const row = el("tr");
+    row.appendChild(el("td", "cell-mono", rule.id));
+    row.appendChild(el("td", null, rule.kind));
+    const sev = el("td");
+    sev.appendChild(el("span", "pill " + rule.severity, rule.severity));
+    row.appendChild(sev);
+    row.appendChild(el("td", "cell-mono", (rule.languages || ["any"]).join(", ")));
+    row.appendChild(el("td", null, rule.why));
+    row.appendChild(el("td", null, rule.patch));
+    body.appendChild(row);
+  });
+  if (!rules.length) {
+    const row = el("tr");
+    const cell = el("td", "empty", "нет совпадений");
+    cell.colSpan = 6;
+    row.appendChild(cell);
+    body.appendChild(row);
+  }
+}
+
+$("#rules-search").addEventListener("input", (event) => {
+  state.rulesFilter = event.target.value;
+  renderRules();
+});
+
 async function loadRules() {
   try {
     const result = await api("/api/patterns");
-    const body = $("#rules-table tbody");
-    body.textContent = "";
-    result.rules.forEach((rule) => {
-      const row = el("tr");
-      row.appendChild(el("td", "cell-mono", rule.id));
-      row.appendChild(el("td", null, rule.kind));
-      const sev = el("td");
-      sev.appendChild(el("span", "pill " + rule.severity, rule.severity));
-      row.appendChild(sev);
-      row.appendChild(el("td", "cell-mono", (rule.languages || ["any"]).join(", ")));
-      row.appendChild(el("td", null, rule.why));
-      row.appendChild(el("td", null, rule.patch));
-      body.appendChild(row);
-    });
-
+    rulesCache = result.rules || [];
+    renderRules();
     const coverage = $("#coverage-table tbody");
     coverage.textContent = "";
     (result.coverage || []).forEach((entry) => {
@@ -770,11 +993,14 @@ async function loadKnowledge() {
     }
     result.items.forEach((item, index) => {
       const node = el("div", "item");
-      node.appendChild(el("div", "t", item.name));
+      const body = el("div", "body");
+      body.appendChild(el("b", null, item.name));
+      node.appendChild(body);
       node.addEventListener("click", () => {
         $$("#knowledge-list .item").forEach((other) => other.classList.remove("active"));
         node.classList.add("active");
-        view.textContent = item.text;
+        view.innerHTML = mdToHtml(item.text);
+        view.scrollTop = 0;
       });
       list.appendChild(node);
       if (index === 0) node.click();
@@ -784,6 +1010,36 @@ async function loadKnowledge() {
   }
 }
 
+/* ---------- горячие клавиши ---------- */
+
+document.addEventListener("keydown", (event) => {
+  const tag = (event.target.tagName || "").toLowerCase();
+  const typing = tag === "input" || tag === "select" || tag === "textarea";
+
+  if (event.key === "Escape") {
+    if (typing) event.target.blur();
+    return;
+  }
+  if (typing) return;
+
+  if (event.key === "/") {
+    event.preventDefault();
+    const active = ORDER.find((name) => document.getElementById("panel-" + name).classList.contains("active"));
+    if (active === "findings") $("#f-search").focus();
+    else if (active === "services") $("#svc-search").focus();
+    else if (active === "rules") $("#rules-search").focus();
+    else { showTab("findings"); $("#f-search").focus(); }
+    return;
+  }
+  if (/^[1-9]$/.test(event.key)) {
+    const name = ORDER[Number(event.key) - 1];
+    if (name) showTab(name);
+    return;
+  }
+  if (event.key.toLowerCase() === "g") { $("#btn-generate").click(); }
+  if (event.key.toLowerCase() === "r") { $("#btn-run-probe").click(); }
+});
+
 /* ---------- старт ---------- */
 
 async function boot() {
@@ -791,10 +1047,10 @@ async function boot() {
     const current = await api("/api/state");
     state.config = { target: current.target || {} };
     state.demo = Boolean(current.demo);
-    $("#version").textContent = "v" + current.version;
-    $("#badge-backend").textContent = "бэкенд: " + current.backend;
-    $("#badge-demo").hidden = !current.demo;
+    state.version = current.version;
+    renderBudget(current.budget);
     fillForm();
+    renderBadges();
   } catch (error) {
     setStatus($("#connect-status"), "сервер не отвечает: " + error.message, "bad");
   }
@@ -803,6 +1059,9 @@ async function boot() {
     const last = await api("/api/last");
     if (last && last.findings) ingest(last);
   } catch (_) { /* аудита ещё нет */ }
+
+  const hash = (location.hash || "").replace("#", "");
+  showTab(TITLES[hash] ? hash : "connect", false);
 
   loadRules();
   loadKnowledge();

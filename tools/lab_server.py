@@ -25,6 +25,21 @@ STAMPS: list[float] = []
 FLAG = "ctfcup{lab_flag_do_not_submit}"
 
 
+def pick(query: dict, *names: str) -> str:
+    """Первое найденное имя параметра.
+
+    Имена нарочно не фиксированы: демо-находки приходят из разных стеков и
+    детектор параметра вытаскивает то `q`, то `path`, то `name`. Лаборатория
+    принимает любой из них, иначе проба уходит с пустым значением и сигнала
+    нет не потому, что детект слабый, а потому что ручка не та.
+    """
+    for name in names:
+        values = query.get(name)
+        if values:
+            return values[0]
+    return ""
+
+
 class LabHandler(BaseHTTPRequestHandler):
     server_version = "ADLab/1.0"
 
@@ -53,7 +68,7 @@ class LabHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/sqli":
-            value = query.get("id", [""])[0]
+            value = pick(query, "id", "q", "name", "query")
             if "'" in value or '"' in value or "\\" in value:
                 self._send(500, "sqlite3.OperationalError: unrecognized token: \"'\"")
             else:
@@ -61,7 +76,7 @@ class LabHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/file":
-            name = query.get("name", [""])[0]
+            name = pick(query, "name", "path", "file", "filename")
             if ".." in name or name.startswith("/etc/"):
                 self._send(200, "root:x:0:0:root:/root:/bin/bash\ndaemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin")
             else:
@@ -69,7 +84,7 @@ class LabHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/ping":
-            host = query.get("host", [""])[0]
+            host = pick(query, "host", "name", "q", "cmd", "target")
             if any(token in host for token in (";", "|", "$(", "`")):
                 self._send(200, "PING ok\nuid=0(root) gid=0(root) groups=0(root)")
             else:
@@ -77,7 +92,7 @@ class LabHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/render":
-            name = query.get("name", [""])[0]
+            name = pick(query, "name", "q", "text", "tpl")
             if "{{7*7}}" in name or "<%= 7*7 %>" in name or "#{7*7}" in name or "${7*7}" in name:
                 self._send(200, "Hello 49")
             else:
@@ -85,7 +100,8 @@ class LabHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/go":
-            target = query.get("next", ["/"])[0]
+            target = pick(query, "next", "url", "to", "redirect") or "/"
+
             if target.startswith("//") or target.startswith("http"):
                 self._send(302, "redirecting", {"Location": target})
             else:
