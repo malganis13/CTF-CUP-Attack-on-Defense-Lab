@@ -653,6 +653,59 @@ LANG_RULES: tuple[Rule, ...] = (
         pattern=re.compile(r"""\bget_object_or_404\(\s*\w+\s*,\s*(?:pk|id)\s*=|\.objects\.get\(\s*(?:pk|id)\s*="""),
         languages=("python",),
     ),
+    Rule(
+        id="cpp-boost-archive",
+        kind="Unsafe deserialization",
+        severity="high",
+        why="A boost archive is reconstructed from untrusted bytes: the library trusts the sizes it reads (CVE-2023-34399 class).",
+        patch="Do not deserialize from the network; use a versioned schema with length checks, or protobuf/JSON with a size cap.",
+        pattern=re.compile(r"""boost::archive::(?:text|binary|xml|polymorphic)_iarchive|#include\s*<boost/archive/[^>]*_iarchive"""),
+        languages=("c", "cpp"),
+    ),
+    Rule(
+        id="go-owner-from-request",
+        kind="Business logic: owner from request",
+        severity="high",
+        why="The owner of a new object is taken from a request field, so any user can create objects under another user's name.",
+        patch="Take the owner from the session or token claims only; ignore an owner field sent by the client.",
+        pattern=re.compile(r"""\breq\.(?:Username|UserID|UserId|OwnerID|OwnerId|SellerID|SellerId|Role)\b""", re.I),
+        context=re.compile(r"""(?s)Owner(?:ID|Id)\s*[:=].{0,300}req\.(?:Username|UserID|UserId|SellerID)|req\.(?:Username|UserID|UserId|SellerID).{0,300}Owner(?:ID|Id)\s*[:=]"""),
+        window=8,
+        once=True,
+        languages=("go",),
+    ),
+    Rule(
+        id="infra-image-latest",
+        kind="Infrastructure: mutable image tag",
+        severity="medium",
+        why="The container image is pinned to a mutable tag: the next pull can bring a different build, including a vulnerable one.",
+        patch="Pin the image by digest or exact version; update deliberately.",
+        pattern=re.compile(r"""\bimage:\s*["']?[\w./-]+:latest\b"""),
+    ),
+    Rule(
+        id="infra-privileged",
+        kind="Infrastructure: privileged container",
+        severity="high",
+        why="A privileged container has the host's devices and kernel capabilities: an escape is a root shell on the node.",
+        patch="Drop privileged; grant only the capabilities the workload needs.",
+        pattern=re.compile(r"""\bprivileged:\s*true\b"""),
+    ),
+    Rule(
+        id="infra-hostpath",
+        kind="Infrastructure: host path mount",
+        severity="medium",
+        why="A host directory is mounted into the pod: code in the container writes to the node filesystem.",
+        patch="Use a dedicated volume or CSI; never mount /, /etc, /var/run or the docker socket.",
+        pattern=re.compile(r"""\bhostPath:\s*$|path:\s*["']?/(?:etc|var/run|root|)\b""", re.M),
+    ),
+    Rule(
+        id="secret-minio-default",
+        kind="Hardcoded secret",
+        severity="high",
+        why="Default object-storage credentials are in use: anyone who knows the default signs requests as the service.",
+        patch="Generate credentials at deploy time and pass them through a secret.",
+        pattern=re.compile(r"""\bminioadmin\b|access_key\s*[:=]\s*["'][A-Z0-9]{16,}["']""", re.I),
+    ),
 )
 
 RULES: tuple[Rule, ...] = RULES + LANG_RULES
@@ -713,8 +766,10 @@ def scan_text(path: str, text: str, language: str | None = None) -> list[dict]:
             continue
         for number, line in enumerate(lines, 1):
             stripped = line.lstrip()
-            if stripped.startswith(("//", "#", "/*", "*", "<!--", "--")):
+            if stripped.startswith(("//", "/*", "*", "<!--", "--")):
                 # комментарий описывает дыру, но дырой не является
+                continue
+            if stripped.startswith("#") and detected not in {"c", "cpp", "csharp", "go", "rust", "java", "kotlin", "php"}:
                 continue
             if rule.pattern.search(line) is None:
                 continue

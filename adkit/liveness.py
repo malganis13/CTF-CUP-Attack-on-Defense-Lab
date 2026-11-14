@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import re
 import socket
+import ssl
 import time
+import urllib.request
 
 from . import probe
 from .ratelimit import BUDGET
@@ -23,8 +25,28 @@ COOLDOWN = 2.0
 LAST: dict[int, dict] = {}
 
 
-def _probe_url(host: str, port: int, path: str) -> str:
-    return f"http://{host}:{port}{path}"
+def _probe_url(host: str, port: int, path: str, scheme: str = "http") -> str:
+    return f"{scheme}://{host}:{port}{path}"
+
+
+def _tls(host: str, port: int) -> bool:
+    """Порт говорит по TLS (archive и warehouse на Кубке 2025 — tls1.3)."""
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    try:
+        with socket.create_connection((host, port), timeout=TIMEOUT) as raw:
+            with context.wrap_socket(raw):
+                return True
+    except (OSError, ssl.SSLError):
+        return False
+
+
+def _tls_opener():
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    return urllib.request.build_opener(urllib.request.HTTPSHandler(context=context))
 
 
 def _tcp_open(host: str, port: int) -> tuple[bool, int]:
@@ -138,13 +160,14 @@ def check_one(host: str, entry: dict) -> dict:
         LAST[port] = row
         return row
 
-    opener = probe._opener()  # noqa: SLF001 - один движок, один бюджет, один журнал
+    scheme = "https" if _tls(host, port) else "http"
+    opener = _tls_opener() if scheme == "https" else probe._opener()  # noqa: SLF001 - один движок, один бюджет, один журнал
     best: dict | None = None
     for path in HEALTH_PATHS:
         allowed, retry_after = BUDGET.take(1) if path != HEALTH_PATHS[0] else (True, 0)
         if not allowed:
             break
-        answer = probe._fetch(opener, _probe_url(host, port, path), label="liveness")  # noqa: SLF001
+        answer = probe._fetch(opener, _probe_url(host, port, path, scheme), label="liveness")  # noqa: SLF001
         answer["path"] = path
         if answer.get("status"):
             best = answer

@@ -526,6 +526,10 @@ python tools/check_cup.py D:/cup2019/2018-attack-defense
 | 2026 | lighthouse | C++ | chosen-plaintext по FEAL | 14 (строки C, SQL по id) |
 | 2026 | starpost | Flask + Postgres | promo без идемпотентности, обход HMAC в курсоре, prefix-match LFI | 11 (logic, path, ssrf, mass-assign) |
 | 2026 | letoctf: smc / tuzemun / skychat | Python / JS / C++ | — | 7 / 4 / 5 |
+| 2025 | archive | C++ | CVE-2023-34399, boost-архив | 1 (десериализация boost) |
+| 2025 | veladora | Go / Gin | IDOR по счёту, владелец из `req.Username` | 30 (owner-from-request, IDOR) |
+| 2025 | prototype | Python / MinIO | CVE-2025-62506, токен с ключами в base64 | 3 (секрет, SQL) |
+| 2025 | warehouse | Go + React, TLS | SSRF через gateway, IDOR | 15 (IDOR, SQL, SSRF) |
 
 Что это дало по коду:
 
@@ -555,6 +559,13 @@ python tools/check_cup.py D:/cup2019/2018-attack-defense
   из любого pid в строке `ss` (у php и node их несколько).
 - `tools/check_cup.py` и `tools/cup_report.py` — прогон по репозиторию Кубка и
   сводка по нескольким сразу.
+- TLS: если порт отвечает рукопожатием, живость проверяется по `https://`, а не
+  по `http://` — сервисы на tls1.3 (archive, warehouse 2025) больше не выглядят
+  «порт открыт, ответ не HTTP».
+- Инфраструктурные правила для k3s-манифестов: `image: …:latest`,
+  `privileged: true`, `hostPath`, дефолтные ключи MinIO.
+- `#include` и `#define` в C/C++ больше не считаются комментарием: правило
+  boost-архива срабатывает на строке include.
 
 Чего на этих Кубках не хватило: логика без регулярки (права на объект внутри
 ORM), бинарники без исходников, не-HTTP протоколы (qdb виден как «порт открыт»),
