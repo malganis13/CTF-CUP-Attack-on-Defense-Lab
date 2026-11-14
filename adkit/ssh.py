@@ -9,6 +9,7 @@ from __future__ import annotations
 import shlex
 import stat
 import subprocess
+import time
 from pathlib import Path
 
 try:
@@ -19,6 +20,30 @@ except Exception:  # pragma: no cover - optional dependency
 
 class SSHError(RuntimeError):
     """Raised when a connection or a remote read fails."""
+
+
+# Соединение рвётся на короткое время: WSL усыпляет дистрибутив, NAT теряет
+# первый SYN, sshd не успевает принять. Первая команда после паузы падает с
+# "banner exchange", вторая проходит. Повтор дешевле, чем ложный вердикт "бокс
+# недоступен" во время тура.
+RETRIES = 3
+RETRY_BACKOFF = 0.7
+
+TRANSIENT = (
+    "banner exchange",
+    "connection refused",
+    "connection reset",
+    "connection closed",
+    "kex_exchange_identification",
+    "broken pipe",
+    "connection timed out",
+    "operation timed out",
+)
+
+
+def transient(stderr: str) -> bool:
+    low = (stderr or "").lower()
+    return any(marker in low for marker in TRANSIENT)
 
 
 class BaseSSH:
@@ -46,19 +71,28 @@ class ParamikoSSH(BaseSSH):
         self.user = user
         self.client = paramiko.SSHClient()
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.client.connect(
-            hostname=host,
-            port=port,
-            username=user,
-            password=password or None,
-            key_filename=key_path or None,
-            passphrase=passphrase or None,
-            timeout=8,
-            banner_timeout=8,
-            auth_timeout=8,
-            allow_agent=True,
-            look_for_keys=True,
-        )
+        last: Exception | None = None
+        for attempt in range(RETRIES):
+            try:
+                self.client.connect(
+                    hostname=host,
+                    port=port,
+                    username=user,
+                    password=password or None,
+                    key_filename=key_path or None,
+                    passphrase=passphrase or None,
+                    timeout=8,
+                    banner_timeout=8,
+                    auth_timeout=8,
+                    allow_agent=True,
+                    look_for_keys=True,
+                )
+                return
+            except Exception as exc:  # noqa: BLE001 - retried below
+                last = exc
+                if attempt + 1 < RETRIES:
+                    time.sleep(RETRY_BACKOFF * (attempt + 1))
+        raise SSHError(f"{type(last).__name__}: {last}") from last
 
     @staticmethod
     def _read(stream, cap: int) -> bytes:
@@ -140,12 +174,7 @@ class OpenSSHSSH(BaseSSH):
         return args
 
     def run(self, command: str, timeout: int = 30) -> tuple[int, str, str]:
-        try:
-            proc = subprocess.run(self._base() + [command], capture_output=True, timeout=timeout)
-        except FileNotFoundError as exc:
-            raise SSHError("OpenSSH client not found in PATH") from exc
-        except subprocess.TimeoutExpired as exc:
-            raise SSHError(f"ssh timed out after {timeout}s") from exc
+        proc = self._exec([command], timeout)
         return (
             proc.returncode,
             proc.stdout.decode("utf-8", "replace"),
@@ -154,13 +183,27 @@ class OpenSSHSSH(BaseSSH):
 
     def read_file(self, path: str, max_bytes: int = 262144) -> bytes:
         command = f"head -c {int(max_bytes)} -- {shlex.quote(path)}"
-        try:
-            proc = subprocess.run(self._base() + [command], capture_output=True, timeout=30)
-        except subprocess.TimeoutExpired as exc:
-            raise SSHError(f"read timed out: {path}") from exc
+        proc = self._exec([command], 30)
         if proc.returncode != 0 and not proc.stdout:
             raise SSHError(proc.stderr.decode("utf-8", "replace").strip() or f"read failed: {path}")
         return proc.stdout
+
+    def _exec(self, args: list[str], timeout: int) -> subprocess.CompletedProcess:
+        proc: subprocess.CompletedProcess | None = None
+        for attempt in range(RETRIES):
+            try:
+                proc = subprocess.run(self._base() + args, capture_output=True, timeout=timeout)
+            except FileNotFoundError as exc:
+                raise SSHError("OpenSSH client not found in PATH") from exc
+            except subprocess.TimeoutExpired as exc:
+                raise SSHError(f"ssh timed out after {timeout}s") from exc
+            if proc.returncode == 0:
+                return proc
+            if proc.returncode != 255 or not transient(proc.stderr.decode("utf-8", "replace")):
+                return proc
+            if attempt + 1 < RETRIES:
+                time.sleep(RETRY_BACKOFF * (attempt + 1))
+        return proc
 
     def list_dir(self, path: str) -> list[dict]:
         quoted = shlex.quote(path)

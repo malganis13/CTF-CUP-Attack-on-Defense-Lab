@@ -204,6 +204,10 @@ def stack_for(cwd: str, stacks: dict[str, dict]) -> dict:
     if not cwd:
         return {"languages": [], "frameworks": [], "label": ""}
     prefix = cwd.rstrip("/")
+    if not prefix:
+        # cwd == "/" совпадает с любым каталогом: объединение всех стеков
+        # приписывало sshd язык первого попавшегося сервиса.
+        return {"languages": [], "frameworks": [], "label": ""}
     languages: set[str] = set()
     frameworks: set[str] = set()
     matched = False

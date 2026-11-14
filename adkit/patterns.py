@@ -31,6 +31,9 @@ class Rule:
     checker_risk: str = "low"
     absent: tuple[str, ...] = ()
     languages: tuple[str, ...] = ()
+    context: re.Pattern | None = None
+    window: int = 6
+    once: bool = False
 
 
 RULES: tuple[Rule, ...] = (
@@ -559,6 +562,72 @@ LANG_RULES: tuple[Rule, ...] = (
         pattern=re.compile(r"""os\.execute\s*\("""),
         languages=("lua",),
     ),
+    Rule(
+        id="py-key-truncation",
+        kind="Crypto: weak key",
+        severity="high",
+        why="An integer key is converted through hex() and cut to a length.",
+        patch="Build the key with os.urandom; never derive it from a hex string slice.",
+        pattern=re.compile(r"""\bhex\(\s*\w*key\w*\s*\)\s*\[""", re.I),
+        languages=("python",),
+    ),
+    Rule(
+        id="py-static-iv",
+        kind="Crypto: static IV",
+        severity="medium",
+        why="The IV is taken from the key or a constant instead of fresh randomness.",
+        patch="Random IV per message (CBC) or nonce (GCM); send it with the ciphertext.",
+        pattern=re.compile(r"""\biv\s*=\s*(?:\w*key\w*(?:\s*\[[^\]]*\])?|b?["'][^"']*["'])""", re.I),
+        languages=("python",),
+    ),
+    Rule(
+        id="py-xor-reuse",
+        kind="Crypto: repeating-key XOR",
+        severity="high",
+        why="The keystream repeats: the same key bytes are reused for the whole message.",
+        patch="Use a stream cipher with a nonce or AES-GCM; repeating XOR leaks both texts.",
+        pattern=re.compile(r"""zip\([^,]+,\s*cycle\(""", re.I),
+        languages=("python",),
+    ),
+    Rule(
+        id="js-weak-sanitizer",
+        kind="Manual input filter",
+        severity="medium",
+        why="Input is filtered with a character blacklist instead of validated.",
+        patch="Validate by type and allowlist; pass values as parameters, not as SQL text.",
+        pattern=re.compile(r"""\.replace\(\s*/\s*\[\^"""),
+        languages=("javascript", "typescript"),
+    ),
+    Rule(
+        id="cs-weak-token",
+        kind="Weak session token",
+        severity="high",
+        why="The session token is a hash of a rotating seed plus a small counter: the id part is guessable and the seed leaks with every token.",
+        patch="Sign a random value with an HMAC key kept server-side; store only the digest. Do not build tokens from a counter.",
+        pattern=re.compile(r"""\b(?:Convert\.ToBase64String|BitConverter\.GetBytes)\s*\("""),
+        context=re.compile(r"""(?s)(?:GetSha256|SHA256|sha256).{0,600}(?:Convert\.ToBase64String|ToBase64String)|(?:Convert\.ToBase64String|ToBase64String).{0,600}(?:GetSha256|SHA256|sha256)"""),
+        window=8,
+        once=True,
+        languages=("csharp",),
+    ),
+    Rule(
+        id="php-laravel-idor",
+        kind="IDOR / BOLA",
+        severity="high",
+        why="A record is looked up by a value taken straight from the request: any id returns any owner's object.",
+        patch="Scope the query to the current user: where('user_id', auth()->id())->find($id), or check the policy before returning.",
+        pattern=re.compile(r"""->where\(\s*["'][^"']+["']\s*,\s*(?:request\(|\$_(?:GET|POST|REQUEST))""", re.I),
+        languages=("php",),
+    ),
+    Rule(
+        id="php-laravel-ssrf",
+        kind="SSRF",
+        severity="medium",
+        why="The server fetches a URL taken from the request: internal addresses become reachable through the service.",
+        patch="Allowlist hosts and schemes; resolve and reject private ranges before the request.",
+        pattern=re.compile(r"""(?:Http::(?:get|post|put|patch)|file_get_contents|curl_init)\s*\(\s*(?:request\(|\$_(?:GET|POST|REQUEST))""", re.I),
+        languages=("php",),
+    ),
 )
 
 RULES: tuple[Rule, ...] = RULES + LANG_RULES
@@ -573,6 +642,9 @@ def scan_text(path: str, text: str, language: str | None = None) -> list[dict]:
     detected = language or language_of(path, text)
     for rule in RULES:
         if rule.languages and detected not in rule.languages:
+            continue
+        if rule.context is not None:
+            # контекстные правила считаются отдельным проходом по окну строк
             continue
         for number, line in enumerate(lines, 1):
             stripped = line.lstrip()
@@ -612,6 +684,39 @@ def scan_text(path: str, text: str, language: str | None = None) -> list[dict]:
                 "checker_risk": risk,
                 "language": language or language_of(path),
             })
+    for rule in RULES:
+        if rule.context is None:
+            continue
+        if rule.languages and detected not in rule.languages:
+            continue
+        span = max(1, rule.window)
+        for number in range(1, len(lines) + 1):
+            low = max(0, number - 1 - span)
+            high = min(len(lines), number + span)
+            window_text = "\n".join(lines[low:high])
+            if rule.context.search(window_text) is None:
+                continue
+            if (rule.id, number) in seen:
+                continue
+            seen.add((rule.id, number))
+            digest = hashlib.sha1(f"{path}:{number}:{rule.id}".encode()).hexdigest()[:10]
+            findings.append({
+                "id": digest,
+                "rule": rule.id,
+                "kind": rule.kind,
+                "severity": rule.severity,
+                "file": path,
+                "line": number,
+                "snippet": lines[number - 1].strip()[:240],
+                "context": lines[max(0, number - 4): min(len(lines), number + 3)],
+                "context_start": max(0, number - 4) + 1,
+                "why": rule.why,
+                "patch": rule.patch,
+                "checker_risk": "high",
+                "language": language or language_of(path),
+            })
+            if rule.once:
+                break
     findings.sort(key=lambda item: (SEVERITY_ORDER.get(item["severity"], 9), item["file"], item["line"]))
     return findings
 

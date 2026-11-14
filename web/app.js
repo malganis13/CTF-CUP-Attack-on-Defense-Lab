@@ -376,7 +376,10 @@ $("#btn-audit").addEventListener("click", async () => {
 function ingest(audit) {
   state.audit = audit;
   state.findings = (audit.findings || []).slice().sort(
-    (a, b) => (SEV_ORDER[a.severity] ?? 9) - (SEV_ORDER[b.severity] ?? 9)
+    (a, b) =>
+      (a.rank ?? (SEV_ORDER[a.severity] ?? 9) * 10) - (b.rank ?? (SEV_ORDER[b.severity] ?? 9) * 10) ||
+      (a.file || "").localeCompare(b.file || "") ||
+      (a.line || 0) - (b.line || 0)
   );
   renderBadges();
   renderSummary();
@@ -801,7 +804,8 @@ function renderFindings() {
     item.appendChild(el("span", "pill " + finding.severity, finding.severity));
     const body = el("div", "body");
     body.appendChild(el("b", null, finding.kind_ru || finding.kind));
-    body.appendChild(el("small", null, `${finding.file}:${finding.line}`));
+    const meta = `${finding.file}:${finding.line}` + (finding.effort_ru ? ` · ${finding.effort_ru}` : "") + (finding.template ? " · шаблон" : "");
+    body.appendChild(el("small", null, meta));
     item.appendChild(body);
     item.addEventListener("click", () => selectFinding(finding));
     list.appendChild(item);
@@ -872,6 +876,8 @@ function renderFindingDetail(finding) {
   const chips = el("div", "row tight");
   chips.appendChild(el("span", "pill " + finding.severity, finding.severity));
   chips.appendChild(el("span", "pill soft", "риск для чекера: " + (finding.checker_risk || "low")));
+  if (finding.effort_ru) chips.appendChild(el("span", "pill soft", finding.effort_ru));
+  if (finding.template) chips.appendChild(el("span", "pill soft", "шаблонный эксплойт"));
   head.appendChild(chips);
   detail.appendChild(head);
 

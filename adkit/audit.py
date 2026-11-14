@@ -10,7 +10,7 @@ import shlex
 import time
 from pathlib import Path
 
-from . import patterns, ru
+from . import patterns, priority, ru
 from .languages import detect_stacks, stack_for
 from .ssh import BaseSSH
 
@@ -50,7 +50,7 @@ echo __END__
 '''
 
 FIND_COMMAND = (
-    "find {roots} -maxdepth 5 -type f \\("
+    "find {roots} -maxdepth 8 -type f \\("
     " -name '*.py' -o -name '*.go' -o -name '*.rs' -o -name '*.js' -o -name '*.mjs' -o -name '*.ts'"
     " -o -name '*.jsx' -o -name '*.tsx' -o -name '*.vue' -o -name '*.svelte'"
     " -o -name '*.php' -o -name '*.rb' -o -name '*.java' -o -name '*.kt' -o -name '*.cs'"
@@ -64,7 +64,7 @@ FIND_COMMAND = (
 )
 
 MANIFEST_COMMAND = (
-    "find {roots} -maxdepth 5 -type f \\("
+    "find {roots} -maxdepth 8 -type f \\("
     " -name 'go.mod' -o -name 'Cargo.toml' -o -name 'package.json' -o -name 'composer.json'"
     " -o -name 'pom.xml' -o -name 'build.gradle' -o -name 'build.gradle.kts' -o -name 'Gemfile'"
     " -o -name 'requirements.txt' -o -name 'pyproject.toml' -o -name 'Pipfile' -o -name '*.csproj'"
@@ -370,12 +370,14 @@ def analyze_sources(sources: dict[str, str], services: list[dict], host: str) ->
         item["frameworks"] = stack["frameworks"]
         enriched_services.append(item)
 
-    findings.sort(key=lambda item: (patterns.SEVERITY_ORDER.get(item["severity"], 9), item["file"], item["line"]))
     for item in findings:
         if not item.get("kind_ru"):
             item["kind_ru"] = ru.kind_ru(item.get("kind", ""))
         if not item.get("patch_ru"):
             item["patch_ru"] = ru.patch_ru(item.get("rule", ""), item.get("patch", ""))
+        priority.enrich(item)
+    findings.sort(key=priority.sort_key)
+
     counts = {severity: sum(1 for item in findings if item["severity"] == severity)
               for severity in ("high", "medium", "low", "info")}
 
@@ -449,12 +451,18 @@ class Audit:
         if not paths:
             return {}
         listing = "\n".join(paths)
+        # Маркер печатается с ведущим переводом строки: файл без завершающего
+        # \n иначе склеивает свой хвост со следующим маркером, и содержимое
+        # соседнего файла попадает в чужой буфер (номера строк уезжают).
+        # head -c вместо sed -n '1,200p': файлы длиннее 200 строк читались
+        # частично, и находки во второй половине файла просто не находились.
         script = (
-            "while IFS= read -r f; do echo \"===FILE $f\"; sed -n '1,200p' \"$f\" 2>/dev/null; done "
+            "while IFS= read -r f; do printf '\\n===FILE %s\\n' \"$f\"; "
+            "head -c 262144 -- \"$f\" 2>/dev/null; done "
             "<<'__AD_LIST__'\n" + listing + "\n__AD_LIST__\n"
         )
-        script = "(\n" + script + "\n) | head -c 2000000"
-        raw = self._run(script, timeout=50)
+        script = "(\n" + script + "\n) | head -c 8000000"
+        raw = self._run(script, timeout=60)
         sources: dict[str, str] = {}
         current: str | None = None
         buffer: list[str] = []
