@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import re
 import shlex
+import tarfile
+import tempfile
 import time
+import zipfile
 from pathlib import Path
 
 from . import binaries, patterns, priority, ru
@@ -556,3 +559,106 @@ class Audit:
         })
         self.log(f"done: {len(result['findings'])} findings")
         return result
+
+
+# Оффлайн-аудит: распакованный архив сервиса, без SSH и без живого хоста.
+OFFLINE_SUFFIXES = (
+    ".py", ".pyw", ".go", ".rs", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx",
+    ".php", ".phtml", ".rb", ".java", ".kt", ".cs", ".c", ".h", ".cc", ".cpp",
+    ".hpp", ".hh", ".lua", ".pl", ".pm", ".sql", ".proto", ".graphql", ".sh",
+    ".yml", ".yaml", ".toml", ".ini", ".conf", ".service", ".tf", ".tpl",
+)
+OFFLINE_SKIP = {
+    "node_modules", ".git", "__pycache__", "vendor", "dist", "build", "target",
+    "site-packages", ".venv", "obj", "bin", ".idea", "coverage",
+}
+
+
+def scan_directory(root: str, log=lambda message: None) -> dict:
+    """Аудит каталога: тот же движок, только источники берутся с диска."""
+    base = Path(root).expanduser()
+    if not base.is_dir():
+        raise FileNotFoundError(f"нет каталога: {root}")
+    sources: dict[str, str] = {}
+    for path in sorted(base.rglob("*")):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in OFFLINE_SUFFIXES:
+            continue
+        if any(part in OFFLINE_SKIP for part in path.parts):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        sources[str(path)] = text[:262144]
+    log(f"offline files: {len(sources)}")
+    return analyze_sources(sources, [], f"offline:{base}")
+
+
+ARCHIVE_SUFFIXES = (".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz")
+
+
+def _is_archive(path: Path) -> bool:
+    name = path.name.lower()
+    return any(name.endswith(suffix) for suffix in ARCHIVE_SUFFIXES)
+
+
+def _extract(archive: Path, into: Path) -> None:
+    """Распаковать архив сервиса во временный каталог.
+
+    Распаковка недоверенного архива — это операция с путями: zip и tar умеют
+    писать наружу через `..` и абсолютные имена. Каждый элемент проверяется
+    на выход за пределы каталога до записи.
+    """
+    target = into.resolve()
+
+    def safe(name: str) -> Path:
+        candidate = (target / name).resolve()
+        if target not in candidate.parents and candidate != target:
+            raise ValueError(f"archive entry escapes the directory: {name}")
+        return candidate
+
+    if archive.name.lower().endswith(".zip"):
+        with zipfile.ZipFile(archive) as handle:
+            for member in handle.infolist():
+                if member.is_dir():
+                    continue
+                destination = safe(member.filename)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                with handle.open(member) as source, open(destination, "wb") as sink:
+                    sink.write(source.read())
+        return
+
+    with tarfile.open(archive) as handle:
+        for member in handle.getmembers():
+            if not member.isfile():
+                continue
+            destination = safe(member.name)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            source = handle.extractfile(member)
+            if source is None:
+                continue
+            with source, open(destination, "wb") as sink:
+                sink.write(source.read())
+
+
+def scan_target(path: str, log=lambda message: None) -> dict:
+    """Аудит без SSH: каталог или архив сервиса, снятый с машины любым способом.
+
+    Это второй вход в тот же движок. Нужен там, где SSH к сервису нет: архив
+    с площадки, распакованный образ, копия исходников с чужого ноутбука.
+    """
+    base = Path(path).expanduser()
+    if base.is_dir():
+        return scan_directory(str(base), log)
+    if base.is_file() and _is_archive(base):
+        log(f"archive: {base.name}")
+        with tempfile.TemporaryDirectory(prefix="ad-audit-") as workdir:
+            extracted = Path(workdir) / "src"
+            extracted.mkdir()
+            _extract(base, extracted)
+            result = scan_directory(str(extracted), log)
+        result["source"] = str(base)
+        return result
+    raise FileNotFoundError(f"нет ни каталога, ни архива: {path}")

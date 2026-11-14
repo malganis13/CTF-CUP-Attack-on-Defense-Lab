@@ -100,8 +100,8 @@ def main() -> int:
     paced = probe.run_for(finding("Path traversal", "name"), "/file", base, port)
     gaps = [round(b - a, 3) for a, b in zip(lab_server.STAMPS, lab_server.STAMPS[1:])]
     check("пауза между запросами", all(gap >= probe.MIN_DELAY * 0.8 for gap in gaps), str(gaps))
-    check("запросов = базовый + полезные нагрузки",
-          len(lab_server.STAMPS) == len(paced["results"]) + 1,
+    check("запросов = базовый + пара авторизации + полезные нагрузки",
+          len(lab_server.STAMPS) == len(paced["results"]) + 2,
           f"{len(lab_server.STAMPS)} на сервере, {len(paced['results'])} в отчёте")
 
     lab_server.STAMPS.clear()

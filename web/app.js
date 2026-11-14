@@ -29,6 +29,14 @@ const VERDICT_RU = {
   blocked: "заблокировано",
 };
 
+// Вердикт пары «без сессии / с сессией». open — маршрут не различает
+// вызывающих, guarded — различает, unknown — сказать нечего.
+const AUTH_RU = {
+  open: "маршрут не закрыт",
+  guarded: "маршрут закрыт",
+  unknown: "не определить",
+};
+
 const SUMMARY_RU = {
   confirmed: "подтверждено",
   candidate: "кандидат",
@@ -280,6 +288,10 @@ function fillForm() {
   $("#cfg-user").value = target.user || "root";
   $("#cfg-auth").value = target.auth === "password" ? "password" : "key";
   $("#cfg-key").value = target.key_path || "";
+  $("#cfg-cookie").value = "";
+  $("#cfg-cookie").placeholder = state.config.has_cookie
+    ? "кука уже в памяти — введите новую, чтобы заменить"
+    : "session=… из браузера";
   $("#password-row").hidden = $("#cfg-auth").value !== "password";
 }
 
@@ -300,6 +312,8 @@ $("#btn-save").addEventListener("click", async () => {
       },
     };
     if ($("#cfg-auth").value === "password") body.password = $("#cfg-password").value;
+    const cookie = $("#cfg-cookie").value.trim();
+    if (cookie) body.probe_cookie = cookie;
     const result = await api("/api/config", { method: "POST", body: JSON.stringify(body) });
     state.config = result.state;
     renderBadges();
@@ -352,7 +366,8 @@ $("#btn-audit").addEventListener("click", async () => {
   log.textContent = "";
   setStatus(status, "запускаю…");
   try {
-    const started = await api("/api/audit", { method: "POST", body: "{}" });
+    const offline = ($("#audit-path").value || "").trim();
+    const started = await api("/api/audit", { method: "POST", body: JSON.stringify(offline ? { path: offline } : {}) });
     const job = await pollJob(started.job, (lines) => {
       log.textContent = lines.join("\n");
       log.scrollTop = log.scrollHeight;
@@ -850,6 +865,28 @@ async function loadFix(finding, holder) {
     });
     holder.appendChild(copy);
 
+    if (result.diff) {
+      const download = el("button", "ghost small", "Скачать .patch");
+      download.addEventListener("click", () => {
+        const blob = new Blob([result.diff], { type: "text/x-diff" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = result.diff_name || "finding.patch";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(link.href), 4000);
+        toast("Патч скачан", "ok");
+      });
+      download.title = "unified diff: git apply или patch -p1, применяет человек";
+      holder.appendChild(download);
+      holder.appendChild(el("div", "hint", "патч не применяется сам — только файл для git apply / patch -p1"));
+    } else if (fix.available && fix.exact === false) {
+      holder.appendChild(el("div", "hint",
+        `патч не собран: рецепт для ${fix.sample_label}, а файл — ${fix.language_label}. ` +
+        "Переноси смысл руками, готовый diff был бы чужой язык в этом файле."));
+    }
+
     holder.appendChild(el("h4", null, "порядок"));
     const steps = el("ol", "fix-steps");
     (fix.steps || []).forEach((step) => steps.appendChild(el("li", null, step)));
@@ -1205,7 +1242,26 @@ function renderEvidence(result) {
   const budget = result.budget || null;
   $("#g-verdict").textContent = (SUMMARY_RU[summary.verdict] || summary.verdict || "") +
     ` · запросов ${summary.requests ?? 0}, сигналов ${summary.signals ?? 0}, отличий ${summary.diffs ?? 0}` +
+    (summary.auth ? ` · авторизация: ${AUTH_RU[summary.auth] || summary.auth}` : "") +
     (budget ? ` · бюджет ${budget.used}/${budget.capacity}` : "");
+
+  const auth = result.auth;
+  if (auth) {
+    const tr = el("tr", "auth-row");
+    tr.appendChild(el("td", "cell-mono", "авторизация"));
+    tr.appendChild(el("td", "cell-mono", (auth.anonymous && auth.anonymous.status) ?? "—"));
+    tr.appendChild(el("td", "cell-mono", (auth.anonymous && auth.anonymous.bytes) ?? "—"));
+    tr.appendChild(el("td", "cell-mono", (auth.anonymous && auth.anonymous.ms) ?? "—"));
+    const verdict = el("td");
+    verdict.appendChild(el("span", "pill verdict-" + (auth.verdict === "open" ? "signal" : "clean"),
+      AUTH_RU[auth.verdict] || auth.verdict));
+    tr.appendChild(verdict);
+    const evidence = el("td", "cell-mono", auth.evidence || auth.note || "");
+    evidence.style.fontSize = "11.5px";
+    evidence.style.color = "var(--muted)";
+    tr.appendChild(evidence);
+    body.appendChild(tr);
+  }
 
   if (!(result.results || []).length) {
     const row = el("tr");

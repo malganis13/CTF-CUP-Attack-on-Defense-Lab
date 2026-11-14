@@ -1,3 +1,3 @@
 ﻿"""AD Audit вЂ” read-only Attack-Defense service auditor."""
 
-__version__ = "1.5.0"
+__version__ = "1.6.0"

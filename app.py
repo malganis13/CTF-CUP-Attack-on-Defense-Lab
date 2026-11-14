@@ -22,9 +22,9 @@ from urllib.parse import parse_qs, urlparse
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from adkit import __version__, drill, fixes, liveness, patterns, preflight, probe, ru
+from adkit import __version__, drill, fixes, liveness, patch, patterns, preflight, probe, ru
 from adkit.store import Store
-from adkit.audit import Audit, analyze_sources
+from adkit.audit import Audit, analyze_sources, scan_target
 from adkit.generate import generate_probe, generate_report, pick_endpoint
 from adkit.ratelimit import BUDGET
 from adkit.ssh import SSHError, backend_name, connect, test_connection
@@ -69,6 +69,7 @@ DEFAULT_CONFIG = {
 SESSION: dict = {
     "config": json.loads(json.dumps(DEFAULT_CONFIG)),
     "password": None,
+    "cookie": None,
     "last_audit": None,
     "demo": False,
     "history": [],
@@ -109,6 +110,7 @@ def public_state() -> dict:
         "demo": SESSION["demo"],
         "target": target,
         "has_password": bool(SESSION.get("password")),
+        "has_cookie": bool(SESSION.get("cookie")),
         "has_audit": SESSION.get("last_audit") is not None,
         "liveness": SESSION.get("liveness") or None,
         "rules": len(patterns.RULES),
@@ -413,6 +415,9 @@ class Handler(BaseHTTPRequestHandler):
                         current[key] = target[key]
                 if "password" in body:
                     SESSION["password"] = body.get("password") or None
+                if "probe_cookie" in body:
+                    # Кука живёт только в памяти: на диск, как и пароль, не идёт.
+                    SESSION["cookie"] = (body.get("probe_cookie") or "").strip() or None
                 save_config(SESSION["config"])
                 self.send_json(200, {"ok": True, "state": public_state()})
             elif path == "/api/test":
@@ -477,6 +482,18 @@ class Handler(BaseHTTPRequestHandler):
                           summary=result.get("summary"))
                 self.send_json(200, result)
             elif path == "/api/audit":
+                folder = (body.get("path") or "").strip()
+                if folder:
+                    # оффлайн: распакованный архив сервиса или сам архив, без SSH
+                    def run_offline(log):
+                        log(f"offline scan: {folder}")
+                        result = scan_target(folder, log)
+                        result["offline"] = True
+                        log(f"done: {len(result['findings'])} findings")
+                        return result
+
+                    self.send_json(200, {"job": start_job("audit", run_offline)})
+                    return
                 if SESSION["demo"]:
                     self.send_json(200, {"job": start_job("audit", lambda log: demo_audit())})
                     return
@@ -525,7 +542,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not base:
                     host = SESSION["config"].get("target", {}).get("host") or "127.0.0.1"
                     base = f"http://{host}:{port}"
-                result = probe.run_for(finding, endpoint, base, port)
+                result = probe.run_for(finding, endpoint, base, port, cookie=SESSION.get("cookie"))
                 result["budget"] = probe.BUDGET.peek()
                 STORE.log("probe", rule=finding.get("rule"), endpoint=endpoint,
                           verdict=(result.get("summary") or {}).get("verdict"),
@@ -626,6 +643,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         fix = fixes.build_fix(finding.get("rule", ""), finding.get("language", "any"), finding.get("snippet", ""))
         fix["commands"] = fix_commands(finding, audit.get("services") or [])
+        file = finding.get("file") or ""
+        roots = (audit.get("meta") or {}).get("roots") or []
+        root = next((item for item in roots if item and file.startswith(item)), "")
         self.send_json(200, {
             "finding": {
                 "id": finding.get("id"),
@@ -635,6 +655,8 @@ class Handler(BaseHTTPRequestHandler):
                 "severity": finding.get("severity"),
             },
             "fix": fix,
+            "diff": patch.unified(finding, fix, root=root),
+            "diff_name": patch.stamp(finding) + ".patch",
         })
 
 

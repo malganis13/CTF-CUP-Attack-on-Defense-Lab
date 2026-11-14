@@ -121,6 +121,10 @@
               <input id="cfg-password" type="password" autocomplete="new-password" placeholder="только в памяти">
               <span class="hint">в config.json не попадает</span>
             </label>
+            <label class="field wide">кука сессии для пробы авторизации
+              <input id="cfg-cookie" type="password" autocomplete="off" spellcheck="false" placeholder="session=… из браузера">
+              <span class="hint">только в памяти; без неё проверяется лишь «пускает ли без сессии»</span>
+            </label>
           </div>
           <div class="row" style="margin-top:16px">
             <button id="btn-save" class="primary">Сохранить</button>
@@ -194,6 +198,13 @@
               <p class="lead" style="margin:0">Сбор портов, процессов, исходников и правил. Один прогон — один проход.</p>
             </div>
             <button id="btn-audit" class="primary">Запустить аудит</button>
+          </div>
+          <div class="row" style="margin-top:14px">
+            <label class="field grow">без SSH: каталог или архив сервиса
+              <input id="audit-path" autocomplete="off" spellcheck="false"
+                     placeholder="D:\cup2025\veladora.zip — пусто: работать по SSH">
+              <span class="hint">.zip, .tar.gz, .tgz, .tar.bz2, .tar.xz; распаковка во временный каталог</span>
+            </label>
           </div>
           <div class="progress"><div class="bar" id="audit-bar"></div></div>
           <span class="status" id="audit-status"></span>

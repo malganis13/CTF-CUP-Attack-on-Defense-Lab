@@ -11,6 +11,11 @@ What it never does:
 - run more than MAX_REQUESTS requests
 - loop over ids (no brute force)
 - follow redirects (the redirect itself is the evidence)
+
+Authorization is checked separately by `auth_diff`: the same path is fetched
+twice, once without a session and once with the operator's own cookie. A route
+that answers both the same way does not distinguish callers. That is the one
+authorization test that needs no second account and no writes.
 """
 from __future__ import annotations
 
@@ -40,6 +45,14 @@ JOURNAL: list[dict] = []
 # Флаг турнира в ответе — это не «ещё одна улика», это добыча. Ищем форму
 # `prefix{...}` в любом ответе: если сервис отдал флаг на GET, он уже потерян.
 FLAG_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9_]{1,15}\{[^{}\s]{6,80}\}")
+
+# Страница входа, отданная с кодом 200, — это не «доступ», это отказ в
+# вежливой форме. Признаки ищем в теле и в заголовке Location.
+LOGIN_MARKERS = re.compile(
+    r"(?i)(name=[\"']password[\"']|type=[\"']password[\"']|sign[\s_-]?in|log[\s_-]?in"
+    r"|войти|авторизац|\bcsrf\b|access[\s_-]?denied|unauthori[sz]ed|forbidden)"
+)
+LOGIN_REDIRECT = re.compile(r"(?i)/(login|log-in|signin|sign-in|auth|session|войти)")
 
 PARAM_PATTERNS = (
     re.compile(r"""request\.args\.get\(\s*["']([\w.-]+)"""),
@@ -185,9 +198,16 @@ def build_requests(finding: dict, endpoint: str, port: int = 80) -> list[dict]:
     return requests[:MAX_REQUESTS]
 
 
-def _fetch(opener, url: str, label: str = "probe") -> dict:
+def _headers(cookie: str | None = None) -> dict[str, str]:
+    headers = {"User-Agent": "ad-audit-probe/1.0"}
+    if cookie:
+        headers["Cookie"] = cookie
+    return headers
+
+
+def _fetch(opener, url: str, label: str = "probe", cookie: str | None = None) -> dict:
     started = time.time()
-    request = urllib.request.Request(url, method="GET", headers={"User-Agent": "ad-audit-probe/1.0"})
+    request = urllib.request.Request(url, method="GET", headers=_headers(cookie))
     try:
         with opener.open(request, timeout=TIMEOUT) as response:
             body = response.read(MAX_BODY)
@@ -221,7 +241,81 @@ def _fetch(opener, url: str, label: str = "probe") -> dict:
     }
 
 
-def run(base: str, requests: list[dict], delay: float = DELAY) -> dict:
+def auth_diff(base: str, path: str, opener, cookie: str | None = None,
+              delay: float = DELAY) -> dict:
+    """Один путь, два запроса: без сессии и с ней.
+
+    Вопрос, на который отвечает пара: различает ли маршрут анонимного
+    вызывающего и вошедшего. Если ответ дословно тот же — маршрут не смотрит
+    на сессию, и это уже находка, без единой записи и без второго аккаунта.
+
+    `cookie` необязателен: без него проверяется только «пускает ли без сессии»,
+    с ним — «и отдаёт ли то же самое, что вошедшему».
+    """
+    row: dict = {"path": path, "anonymous": None, "authenticated": None,
+                 "verdict": "unknown", "evidence": ""}
+
+    anonymous = _fetch(opener, base + path, label="auth-anon")
+    anon_body = anonymous.pop("body")
+    anon_headers = anonymous.pop("headers")
+    row["anonymous"] = {
+        "status": anonymous["status"], "bytes": len(anon_body),
+        "ms": anonymous["ms"], "sha": hashlib.sha256(anon_body).hexdigest()[:10],
+        "error": anonymous["error"],
+    }
+    if anonymous["error"]:
+        row["evidence"] = anonymous["error"]
+        return row
+
+    status = anonymous["status"]
+    location = anon_headers.get("Location", "")
+    text = anon_body.decode("utf-8", "replace")
+    login_page = bool(LOGIN_MARKERS.search(text)) and len(anon_body) < 4096
+
+    if 300 <= status < 400 and LOGIN_REDIRECT.search(location):
+        row["verdict"] = "guarded"
+        row["evidence"] = f"анонимного отправили на {location[:80]}"
+        return row
+
+    auth_body = None
+    if cookie:
+        time.sleep(delay)
+        auth = _fetch(opener, base + path, label="auth-session", cookie=cookie)
+        auth_body = auth.pop("body")
+        row["authenticated"] = {
+            "status": auth["status"], "bytes": len(auth_body),
+            "ms": auth["ms"], "sha": hashlib.sha256(auth_body).hexdigest()[:10],
+            "error": auth["error"],
+        }
+
+    same = auth_body is not None and hashlib.sha256(auth_body).hexdigest() == hashlib.sha256(anon_body).hexdigest()
+
+    if status in (401, 403):
+        row["verdict"] = "guarded"
+        row["evidence"] = f"без сессии {status}"
+    elif status == 200 and same:
+        row["verdict"] = "open"
+        row["evidence"] = f"200 и дословно тот же ответ, что с сессией ({len(anon_body)}Б)"
+    elif status == 200 and login_page and not same:
+        row["verdict"] = "guarded"
+        row["evidence"] = "без сессии отдана страница входа"
+    elif status == 200 and auth_body is None and not login_page and len(anon_body) >= 200:
+        row["verdict"] = "open"
+        row["evidence"] = f"200 без сессии, страницы входа нет ({len(anon_body)}Б)"
+    elif status == 200:
+        row["verdict"] = "unknown"
+        row["evidence"] = "без сессии 200, но ответ похож на страницу входа или пуст"
+    else:
+        row["verdict"] = "guarded"
+        row["evidence"] = f"без сессии {status}"
+
+    if auth_body is None:
+        row["note"] = "кука не задана: проверено только «пускает ли без сессии»"
+    return row
+
+
+def run(base: str, requests: list[dict], delay: float = DELAY,
+        cookie: str | None = None, auth: bool = True) -> dict:
     """Execute the request list against one base URL."""
     base = (base or "").rstrip("/")
     if not base.startswith(("http://", "https://")):
@@ -230,7 +324,8 @@ def run(base: str, requests: list[dict], delay: float = DELAY) -> dict:
         return {"base": base, "results": [], "summary": {"requests": 0, "signals": 0, "diffs": 0, "errors": 0}}
 
     delay = max(MIN_DELAY, float(delay))
-    planned = min(len(requests), MAX_REQUESTS) + 1  # +1 for the baseline request
+    auth_requests = (1 + (1 if cookie else 0)) if auth else 0
+    planned = min(len(requests), MAX_REQUESTS) + 1 + auth_requests  # +1 for the baseline request
     allowed, retry_after = BUDGET.take(planned)
     if not allowed:
         raise BudgetExhausted(retry_after)
@@ -253,6 +348,11 @@ def run(base: str, requests: list[dict], delay: float = DELAY) -> dict:
 
     baseline = _fetch(opener, base + allowed[0]["path"])
     time.sleep(delay)
+
+    auth_row = None
+    if auth:
+        auth_row = auth_diff(base, allowed[0]["path"], opener, cookie=cookie, delay=delay)
+        time.sleep(delay)
 
     for item in requests[:MAX_REQUESTS]:
         path = item["path"]
@@ -317,30 +417,34 @@ def run(base: str, requests: list[dict], delay: float = DELAY) -> dict:
     return {
         "base": base,
         "endpoint": requests[0]["path"],
+        "auth": auth_row,
         "results": results,
         "summary": {
-            "requests": len(results),
+            "requests": len(results) + (auth_requests if auth_row else 0),
             "signals": signals,
             "diffs": diffs,
             "errors": errors,
             "blocked": blocked,
             "flags": len(flags),
             "flag": flags[0] if flags else None,
+            "auth": (auth_row or {}).get("verdict"),
             "verdict": "confirmed" if signals else ("candidate" if diffs else "no signal"),
         },
     }
 
 
-def run_for(finding: dict, endpoint: str, base: str, port: int = 80) -> dict:
+def run_for(finding: dict, endpoint: str, base: str, port: int = 80,
+            cookie: str | None = None) -> dict:
     """Build and execute in one call."""
     requests = build_requests(finding, endpoint, port)
     if not requests:
         return {
             "base": base,
             "endpoint": endpoint,
+            "auth": None,
             "results": [],
             "summary": {"requests": 0, "signals": 0, "diffs": 0, "errors": 0, "blocked": 0,
                         "verdict": "manual"},
             "reason": "this kind cannot be tested with a single GET",
         }
-    return run(base, requests)
+    return run(base, requests, cookie=cookie)

@@ -274,6 +274,17 @@ def _ssrf() -> Fix:
                 '    http_response_code(403); exit("internal address");',
                 "}",
             ),
+            "go": (
+                'host := parsed.Hostname()',
+                'if !allowedHosts[host] {',
+                '    http.Error(w, "host not allowed", http.StatusForbidden)',
+                '    return',
+                '}',
+                'if ip := net.ParseIP(host); ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast()) {',
+                '    http.Error(w, "internal address", http.StatusForbidden)',
+                '    return',
+                '}',
+            ),
         },
         steps=(
             "ограничь хост белым списком",
@@ -440,6 +451,20 @@ def _idor() -> Fix:
                 "$stmt = $db->prepare('SELECT * FROM items WHERE id = :id AND owner_id = :owner');",
                 "$stmt->bindValue(':owner', $_SESSION['uid'], SQLITE3_INTEGER);",
             ),
+            "go": (
+                'row := db.QueryRowContext(ctx,',
+                '    "SELECT id, title, body FROM notes WHERE id = $1 AND owner_id = $2", id, userID)',
+            ),
+            "java": (
+                'PreparedStatement ps = conn.prepareStatement(',
+                '    "SELECT * FROM notes WHERE id = ? AND owner_id = ?");',
+                'ps.setLong(1, noteId);',
+                'ps.setLong(2, session.getUserId());',
+            ),
+            "csharp": (
+                "var note = await db.Notes.FirstOrDefaultAsync(",
+                "    n => n.Id == id && n.OwnerId == userId);",
+            ),
         },
         steps=(
             "добавь в запрос условие по владельцу или арендатору",
@@ -599,6 +624,17 @@ def _mass_assign() -> Fix:
                 "$allowed = ['display_name', 'locale'];",
                 "$payload = array_intersect_key($_POST, array_flip($allowed));",
             ),
+            "go": (
+                'type ProfilePatch struct {',
+                '    DisplayName string `json:"display_name"`',
+                '    Locale      string `json:"locale"`',
+                '}',
+                'var patch ProfilePatch  // role и balance сюда не попадают по типу',
+                'if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {',
+                '    http.Error(w, "bad request", http.StatusBadRequest)',
+                '    return',
+                '}',
+            ),
         },
         steps=(
             "перечисли разрешённые поля явно",
@@ -646,6 +682,9 @@ def _debug_route() -> Fix:
                 "def debug_vars(): ...",
             ),
             "javascript": ("app.get('/debug/vars', requireAdminToken, handler);",),
+            "go": (
+                'mux.Handle("/debug/vars", localOnly(requireAdminToken(debugVars)))',
+            ),
         },
         steps=(
             "закрой маршрут токеном или локальным адресом",
@@ -721,7 +760,13 @@ def build_fix(rule_id: str, language: str, snippet: str = "") -> dict:
 
     fix = FIXES[key]
     samples = fix.after
-    code = samples.get(language) or samples.get("any") or samples.get(next(iter(samples)))
+    if language in samples:
+        sample_language = language
+    elif "any" in samples:
+        sample_language = "any"
+    else:
+        sample_language = next(iter(samples))
+    code = samples[sample_language]
     language_label = LANGUAGE_LABELS.get(language, language)
 
     return {
@@ -730,6 +775,11 @@ def build_fix(rule_id: str, language: str, snippet: str = "") -> dict:
         "title": fix.title,
         "language": language,
         "language_label": language_label,
+        # Язык, на котором рецепт действительно написан. Если он не совпадает
+        # с языком находки, diff не собирается: питон в .go-файле — не патч.
+        "sample_language": sample_language,
+        "sample_label": LANGUAGE_LABELS.get(sample_language, sample_language),
+        "exact": sample_language in {language, "any"},
         "before": fix.before,
         "after": code,
         "snippet": snippet.strip()[:400],
