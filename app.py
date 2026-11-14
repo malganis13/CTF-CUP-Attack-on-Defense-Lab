@@ -258,6 +258,13 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 audit = SESSION.get("last_audit") or {}
                 services = audit.get("services") or []
+                if not services:
+                    self.send_json(200, {
+                        "host": "", "rows": [],
+                        "summary": {"up": 0, "down": 0, "sick": 0, "open": 0, "local": 0, "unknown": 0},
+                        "error": "сначала аудит: список сервисов пуст",
+                    })
+                    return
                 host = (SESSION["config"].get("target", {}).get("host") or "").strip()
                 force = query.get("force", [""])[0] in {"1", "true", "yes"}
                 result = liveness.check(host, services, force=force)

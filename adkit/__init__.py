@@ -1,3 +1,3 @@
-"""AD Audit — read-only Attack-Defense service auditor."""
+﻿"""AD Audit вЂ” read-only Attack-Defense service auditor."""
 
-__version__ = "1.1.1"
+__version__ = "1.1.2"
