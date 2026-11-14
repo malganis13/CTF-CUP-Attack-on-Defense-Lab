@@ -12,11 +12,12 @@ const TITLES = {
   files: ["Файлы", "исходники на цели"],
   generator: ["Генератор", "проба и заготовка"],
   report: ["Отчёт", "markdown для команды"],
+  traffic: ["Трафик", "доказательство: не флуд"],
   rules: ["Правила", "что именно ищет сканер"],
   knowledge: ["База знаний", "регламент, патчи, оценка"],
 };
 
-const ORDER = ["connect", "audit", "services", "findings", "files", "generator", "report", "rules", "knowledge"];
+const ORDER = ["connect", "audit", "services", "findings", "files", "generator", "report", "traffic", "rules", "knowledge"];
 
 const SEV_ORDER = { high: 0, medium: 1, low: 2, info: 3 };
 
@@ -199,6 +200,7 @@ function showTab(name, push) {
   $("#page-title").textContent = title;
   $("#page-sub").textContent = sub;
   if (push !== false && location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
+  if (name === "traffic") loadTraffic();
 }
 
 $$("#tabs button").forEach((button) => {
@@ -522,6 +524,52 @@ function selectFinding(finding) {
   renderSteps();
 }
 
+async function loadFix(finding, holder) {
+  try {
+    const result = await api("/api/fix?id=" + encodeURIComponent(finding.id));
+    const fix = result.fix || {};
+    holder.textContent = "";
+    if (!fix.available) {
+      const list = el("ol", "fix-steps");
+      (fix.steps || []).forEach((step) => list.appendChild(el("li", null, step)));
+      holder.appendChild(el("p", "fix-title", fix.title || "общий порядок"));
+      holder.appendChild(list);
+      return;
+    }
+    const head = el("div", "row tight");
+    head.appendChild(el("b", "fix-title", fix.title));
+    head.appendChild(el("span", "pill " + (fix.risk === "high" ? "high" : fix.risk === "medium" ? "medium" : "low"),
+      "риск для раунда: " + (fix.risk === "high" ? "высокий" : fix.risk === "medium" ? "средний" : "низкий")));
+    holder.appendChild(head);
+
+    const code = el("div", "fix-code");
+    (fix.before || []).forEach((line) => code.appendChild(el("div", "fix-line minus", "- " + line)));
+    (fix.after || []).forEach((line) => code.appendChild(el("div", "fix-line plus", "+ " + line)));
+    holder.appendChild(code);
+
+    const copy = el("button", "ghost small", "Копировать безопасный вариант");
+    copy.addEventListener("click", async () => {
+      await copyText((fix.after || []).join("\n"));
+      toast("Код скопирован", "ok");
+    });
+    holder.appendChild(copy);
+
+    holder.appendChild(el("h4", null, "порядок"));
+    const steps = el("ol", "fix-steps");
+    (fix.steps || []).forEach((step) => steps.appendChild(el("li", null, step)));
+    holder.appendChild(steps);
+
+    if (fix.breaks) {
+      const warn = el("div", "fix-breaks");
+      warn.appendChild(el("b", null, "что может отвалиться: "));
+      warn.appendChild(document.createTextNode(fix.breaks));
+      holder.appendChild(warn);
+    }
+  } catch (error) {
+    holder.textContent = "патч не загрузился: " + error.message;
+  }
+}
+
 function renderFindingDetail(finding) {
   const detail = $("#finding-detail");
   detail.textContent = "";
@@ -546,6 +594,13 @@ function renderFindingDetail(finding) {
   patch.appendChild(el("h4", null, "как чинить"));
   patch.appendChild(el("p", null, finding.patch));
   body.appendChild(patch);
+
+  const fixBlock = el("div", "block");
+  fixBlock.appendChild(el("h4", null, "как закрыть · код"));
+  const fixHolder = el("div", "fix-holder", "загружаю…");
+  fixBlock.appendChild(fixHolder);
+  body.appendChild(fixBlock);
+  loadFix(finding, fixHolder);
 
   const ctx = el("div", "block");
   ctx.appendChild(el("h4", null, "контекст"));
@@ -921,6 +976,83 @@ $("#btn-save-report").addEventListener("click", () => {
   toast("Файл скачан", "ok");
 });
 
+/* ---------- трафик ---------- */
+
+let trafficCache = null;
+
+function renderTraffic(profile) {
+  trafficCache = profile;
+  const summary = profile.summary || {};
+  const caps = profile.caps || {};
+  $("#tr-total").textContent = summary.total ?? 0;
+  $("#tr-minute").textContent = summary.last_minute ?? 0;
+  $("#tr-bytes").textContent = summary.bytes ?? 0;
+  $("#tr-avg").textContent = summary.avg_bytes ?? 0;
+  $("#tr-ms").textContent = summary.avg_ms ?? 0;
+
+  const claims = $("#traffic-claims");
+  claims.textContent = "";
+  const list = el("div", null);
+  list.appendChild(el("b", null, "потолки: "));
+  list.appendChild(document.createTextNode(
+    `${caps.max_requests_per_probe} GET на пробу + ${caps.baseline_requests} базовый, ` +
+    `пауза ${caps.min_delay_s} с, бюджет ${caps.budget_capacity} за ${caps.budget_window_s} с`
+  ));
+  claims.appendChild(list);
+  const ul = el("ul", "fix-steps");
+  ul.style.margin = "8px 0 0";
+  (profile.claims || []).forEach((claim) => ul.appendChild(el("li", null, claim)));
+  claims.appendChild(ul);
+
+  const body = $("#traffic-table tbody");
+  body.textContent = "";
+  const events = (profile.events || []).slice().reverse();
+  if (!events.length) {
+    const row = el("tr");
+    const cell = el("td", "empty", "проб ещё не было");
+    cell.colSpan = 5;
+    row.appendChild(cell);
+    body.appendChild(row);
+    return;
+  }
+  events.forEach((event) => {
+    const row = el("tr");
+    const when = new Date((event.at || 0) * 1000);
+    row.appendChild(el("td", "cell-mono", when.toLocaleTimeString("ru-RU")));
+    const url = el("td", "cell-mono", event.url || "");
+    url.style.maxWidth = "520px";
+    url.style.overflow = "hidden";
+    url.style.textOverflow = "ellipsis";
+    url.style.whiteSpace = "nowrap";
+    row.appendChild(url);
+    row.appendChild(el("td", "cell-mono", event.status ?? 0));
+    row.appendChild(el("td", "cell-mono", event.bytes ?? 0));
+    row.appendChild(el("td", "cell-mono", event.ms ?? 0));
+    body.appendChild(row);
+  });
+}
+
+async function loadTraffic() {
+  try {
+    renderTraffic(await api("/api/traffic"));
+  } catch (error) {
+    toast("журнал трафика: " + error.message, "bad");
+  }
+}
+
+$("#btn-traffic-refresh").addEventListener("click", loadTraffic);
+
+$("#btn-traffic-csv").addEventListener("click", () => {
+  if (!trafficCache) { toast("сначала обновите журнал", "warn"); return; }
+  const lines = ["time,url,status,bytes,ms"];
+  (trafficCache.events || []).forEach((event) => {
+    lines.push([new Date((event.at || 0) * 1000).toISOString(), event.url, event.status, event.bytes, event.ms]
+      .map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","));
+  });
+  download("ad-audit-traffic.csv", lines.join("\n"));
+  toast("Журнал выгружен", "ok");
+});
+
 /* ---------- правила ---------- */
 
 let rulesCache = [];
@@ -1038,6 +1170,22 @@ document.addEventListener("keydown", (event) => {
   }
   if (event.key.toLowerCase() === "g") { $("#btn-generate").click(); }
   if (event.key.toLowerCase() === "r") { $("#btn-run-probe").click(); }
+});
+
+/* ---------- остановка ---------- */
+
+$("#btn-stop").addEventListener("click", async () => {
+  const button = $("#btn-stop");
+  button.disabled = true;
+  try {
+    await api("/api/shutdown", { method: "POST", body: "{}" });
+    document.body.innerHTML =
+      '<div style="display:grid;place-items:center;height:100vh;font:15px system-ui;color:#8b95a3;text-align:center">' +
+      "<div><b style='color:#e6edf3'>Сервер остановлен.</b><br>Закройте вкладку — приложение завершило работу.</div></div>";
+  } catch (error) {
+    button.disabled = false;
+    toast("не вышло остановить: " + error.message, "bad");
+  }
 });
 
 /* ---------- старт ---------- */

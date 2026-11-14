@@ -575,6 +575,10 @@ def scan_text(path: str, text: str, language: str | None = None) -> list[dict]:
         if rule.languages and detected not in rule.languages:
             continue
         for number, line in enumerate(lines, 1):
+            stripped = line.lstrip()
+            if stripped.startswith(("//", "#", "/*", "*", "<!--", "--")):
+                # комментарий описывает дыру, но дырой не является
+                continue
             if rule.pattern.search(line) is None:
                 continue
             if (rule.id, number) in seen:
@@ -615,6 +619,9 @@ def scan_text(path: str, text: str, language: str | None = None) -> list[dict]:
 _ROUTE_DECORATOR = re.compile(r"""@\w+\.(route|get|post|put|delete|patch)\(\s*["']([^"']+)""", re.I)
 _ROUTE_DOTTED = re.compile(r"""\.(GET|POST|PUT|DELETE|PATCH|Get|Post|Put|Delete|Patch)\(\s*["']([^"']+)""")
 _ROUTE_GO_STD = re.compile(r"""\b(?:http|mux)\.HandleFunc\(\s*["']([^"']+)""")
+_ROUTE_DISPATCH = re.compile(
+    r"""(?:self\.path|\bpath|route|req\.url|url\.pathname)\s*(?:===?|\.equals\(|in\s*\()\s*["'](/[^"']+)"""
+)
 _ROUTE_GO_HANDLE = re.compile(r"""\.(?:HandleFunc|Handle)\(\s*["']([^"']+)""")
 _ROUTE_LARAVEL = re.compile(r"""Route::(get|post|put|delete|patch)\(\s*["']([^"']+)""", re.I)
 _ROUTE_SPRING = re.compile(r"""@(Get|Post|Put|Delete|Patch|Request)Mapping\(\s*(?:value\s*=\s*)?["']([^"']+)""")
@@ -631,6 +638,7 @@ _ENDPOINT_PATTERNS: tuple[tuple[re.Pattern, object, int], ...] = (
     (_ROUTE_DOTTED, 1, 2),         # gin, chi, echo, fiber, express, koa, fastify
     (_ROUTE_GO_STD, "ANY", 1),     # net/http, gorilla mux
     (_ROUTE_GO_HANDLE, "ANY", 1),
+    (_ROUTE_DISPATCH, "ANY", 1),   # ручной роутинг: if path == "/api/x"
     (_ROUTE_LARAVEL, 1, 2),
     (_ROUTE_SPRING, 1, 2),
     (_ROUTE_ASPNET, 1, 2),
@@ -646,6 +654,17 @@ def map_endpoints(path: str, text: str) -> list[dict]:
     """Best-effort endpoint extraction across the frameworks shipped in rules."""
     endpoints: list[dict] = []
     seen: set[tuple[str, str]] = set()
+
+    def plausible(raw: str) -> bool:
+        # Регистрируется маршрут, а не путь к файлу: строка с расширением
+        # (`/tmp/notes_ping.txt`) или без ведущего слэша — не ручка.
+        if not raw.startswith("/") or " " in raw or len(raw) > 120:
+            return False
+        last = raw.rsplit("/", 1)[-1]
+        if "." in last and not last.startswith("{") and not last.startswith(":"):
+            return False
+        return True
+
     for number, line in enumerate(text.splitlines(), 1):
         for pattern, method_spec, path_group in _ENDPOINT_PATTERNS:
             match = pattern.search(line)
@@ -660,6 +679,8 @@ def map_endpoints(path: str, text: str) -> list[dict]:
                 raw_path = "/" + raw_path
             if method in {"REQUEST", "ROUTE"}:
                 method = "ANY"
+            if not plausible(raw_path):
+                continue
             key = (method, raw_path)
             if key in seen:
                 continue

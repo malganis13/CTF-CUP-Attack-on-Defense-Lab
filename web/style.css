@@ -683,3 +683,29 @@ pre.code { white-space: pre; word-break: normal; }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
+
+/* ---------- лечение находки ---------- */
+
+.fix-holder { display: flex; flex-direction: column; gap: 10px; }
+.fix-title { font-size: 13.5px; color: var(--text); }
+.fix-code {
+  font: 12px/1.6 var(--mono);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  overflow: auto;
+  background: #090d12;
+  padding: 8px 0;
+}
+.fix-line { padding: 0 12px; white-space: pre; }
+.fix-line.minus { color: #ffb3b3; background: rgba(255, 92, 92, .08); }
+.fix-line.plus { color: #9be2a8; background: rgba(63, 185, 80, .08); }
+.fix-steps { margin: 0; padding-left: 20px; font-size: 12.5px; color: var(--text-2); }
+.fix-steps li { margin: 3px 0; }
+.fix-breaks {
+  border-left: 3px solid var(--medium);
+  background: var(--medium-soft);
+  color: #ffd28a;
+  font-size: 12.5px;
+  padding: 9px 12px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}

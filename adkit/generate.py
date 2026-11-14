@@ -25,7 +25,14 @@ _ENDPOINT_LINE = re.compile(r"""["'](/[^"']*)["']""")
 
 
 def pick_endpoint(finding: dict, endpoints: list[dict] | None = None) -> str:
-    """Best endpoint for a finding: same file first, then nearest line, then context."""
+    """Best endpoint for a finding.
+
+    The audit already pairs a finding with the route whose handler reads its
+    parameter; that pairing wins. Fall back to same-file routes, then context.
+    """
+    preset = (finding.get("endpoint") or "").strip()
+    if preset.startswith("/"):
+        return preset
     file = finding.get("file")
     line = finding.get("line") or 0
     candidates = [item for item in (endpoints or []) if item.get("file") == file]

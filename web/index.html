@@ -45,6 +45,10 @@
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>
         <span class="label">Отчёт</span>
       </button>
+      <button data-tab="traffic" title="Трафик и правила">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l3 7 4-14 3 7h4"/></svg>
+        <span class="label">Трафик</span>
+      </button>
 
       <div class="nav-group">Справка</div>
       <button data-tab="rules" title="Правила (8)">
@@ -66,6 +70,7 @@
         <kbd>/</kbd> поиск · <kbd>1–9</kbd> разделы<br>
         <kbd>G</kbd> проба · <kbd>Esc</kbd> закрыть
       </div>
+      <button id="btn-stop" class="ghost small" title="Остановить локальный сервер приложения">Остановить сервер</button>
     </div>
   </aside>
 
@@ -328,6 +333,37 @@
             <span class="status" id="r-status"></span>
           </div>
           <pre class="code" id="r-output" style="margin-top:14px"><div class="empty">отчёта нет</div></pre>
+        </div>
+      </section>
+
+      <!-- ТРАФИК -->
+      <section class="panel" id="panel-traffic">
+        <div class="card">
+          <div class="row" style="margin-bottom:14px">
+            <div class="grow">
+              <h2>Профиль трафика</h2>
+              <p class="lead" style="margin:0">Сколько запросов инструмент отправил на самом деле. Это ответ на вопрос организаторов «не флуд ли это».</p>
+            </div>
+            <button id="btn-traffic-refresh" class="ghost small">Обновить</button>
+            <button id="btn-traffic-csv" class="ghost small">Скачать CSV</button>
+          </div>
+          <div class="tiles" id="traffic-tiles">
+            <div class="tile"><span class="val" id="tr-total">0</span><span class="lab">запросов</span></div>
+            <div class="tile"><span class="val" id="tr-minute">0</span><span class="lab">за 60 с</span></div>
+            <div class="tile"><span class="val" id="tr-bytes">0</span><span class="lab">байт принято</span></div>
+            <div class="tile"><span class="val" id="tr-avg">0</span><span class="lab">байт / ответ</span></div>
+            <div class="tile"><span class="val" id="tr-ms">0</span><span class="lab">мс / запрос</span></div>
+          </div>
+          <div class="callout" style="margin-top:14px" id="traffic-claims"></div>
+        </div>
+
+        <div class="card">
+          <h2>Журнал</h2>
+          <p class="lead">Каждая строка — реально отправленный GET. Время, адрес, код, размер.</p>
+          <div class="table-wrap"><table id="traffic-table">
+            <thead><tr><th>время</th><th>запрос</th><th>код</th><th>байт</th><th>мс</th></tr></thead>
+            <tbody><tr><td colspan="5" class="empty">проб ещё не было</td></tr></tbody>
+          </table></div>
         </div>
       </section>
 

@@ -180,6 +180,42 @@ def main() -> int:
         check("report lists services", "| 8081 |" in markdown)
         check("report warns on checker", "/_checker" in markdown)
 
+        print("treatment")
+        fix_target = next(item for item in audit["findings"] if item["rule"] == "sql-fstring")
+        fix = get("/api/fix?id=" + fix_target["id"])
+        check("fix returned", fix.get("fix", {}).get("available") is True, str(fix.get("fix"))[:120])
+        check("fix has safe code", bool(fix["fix"].get("after")))
+        check("fix names the risk", "риск" in (fix["fix"].get("title") or "") or bool(fix["fix"].get("breaks")))
+        missing_ok = False
+        try:
+            get("/api/fix?id=nope")
+        except Exception as error:  # noqa: BLE001
+            missing_ok = "404" in str(error)
+        check("unknown finding is 404", missing_ok)
+
+        print("traffic")
+        traffic = get("/api/traffic")
+        caps = traffic.get("caps", {})
+        check("traffic journal present", isinstance(traffic.get("events"), list))
+        check("cap per probe", caps.get("max_requests_per_probe") == 14, str(caps))
+        check("budget cap", caps.get("budget_capacity") == 30 and caps.get("budget_window_s") == 60, str(caps))
+        check("checker paths blocked", "_checker" in (caps.get("checker_paths_blocked") or [""])[0])
+        check("traffic claims non-empty", len(traffic.get("claims") or []) >= 4)
+
+        print("checker guard")
+        denied_dir = ""
+        denied_file = ""
+        try:
+            get("/api/files?path=/srv/_checker")
+        except Exception as error:  # noqa: BLE001
+            denied_dir = str(error)
+        try:
+            get("/api/file?path=/srv/_checker/flags.json")
+        except Exception as error:  # noqa: BLE001
+            denied_file = str(error)
+        check("checker dir refused", "403" in denied_dir, denied_dir)
+        check("checker file refused", "403" in denied_file, denied_file)
+
         print("config")
         saved = post("/api/config", {"target": {"host": "10.0.0.5", "port": 2222, "user": "root", "auth": "key"}})
         check("config saved", saved.get("ok") is True)

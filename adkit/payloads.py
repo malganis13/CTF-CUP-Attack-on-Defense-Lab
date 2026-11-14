@@ -23,7 +23,7 @@ class Payload:
     note: str = ""
 
 
-SQL_ERROR = r"(?i)(sql syntax|unclosed quotation|sqlite3\.|sqlite error|mysql_fetch|pg_query|SQLSTATE|SequelizeDatabaseError|psycopg2\.|ODBC SQL Server|ORA-\d{5}|syntax error at or near)"
+SQL_ERROR = r"(?i)(sql syntax|unclosed quotation|sqlite3\.|sqlite error|SQLITE_ERROR|SQLITE_CONSTRAINT|mysql_fetch|pg_query|SQLSTATE|SequelizeDatabaseError|psycopg2\.|ODBC SQL Server|ORA-\d{5}|syntax error at or near)"
 PASSWD = r"root:x:0:0:"
 UID = r"uid=\d+\([a-z_][a-z0-9_-]*\)"
 

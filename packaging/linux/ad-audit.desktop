@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=AD Audit
+GenericName=Attack-Defense service auditor
+Comment=Read-only аудит сервисов вулнбокса: находки, пробы, лечение
+Exec=python3 __APP_DIR__/launcher.py
+Icon=ad-audit
+Terminal=false
+Categories=Development;Security;Network;
+Keywords=ctf;attack-defense;audit;security;import;
+StartupWMClass=ad-audit
+StartupNotify=true

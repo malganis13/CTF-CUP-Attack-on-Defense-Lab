@@ -32,6 +32,11 @@ MIN_DELAY = 0.10
 TIMEOUT = 4.0
 BLOCKED = ("/_checker", "putflag", "getflag", "checkflag")
 
+# Журнал фактически отправленных запросов. Нужен как доказательство профиля
+# трафика: сколько, когда, сколько байт. Пишется только на реальной отправке.
+MAX_JOURNAL = 500
+JOURNAL: list[dict] = []
+
 PARAM_PATTERNS = (
     re.compile(r"""request\.args\.get\(\s*["']([\w.-]+)"""),
     re.compile(r"""request\.values\.get\(\s*["']([\w.-]+)"""),
@@ -48,6 +53,12 @@ PARAM_PATTERNS = (
     re.compile(r"""getParameter\(\s*"([\w.-]+)"""),
     re.compile(r"""params\[:([\w.-]+)\]"""),
     re.compile(r"""args\[([\w.-]+)\]"""),
+    # stdlib-стили: parse_qs + собственный хелпер, searchParams, query.get
+    re.compile(r"""\.query\.get\(\s*["']([\w.-]+)"""),
+    re.compile(r"""searchParams\.get\(\s*["']([\w.-]+)"""),
+    re.compile(r"""\bone\(\s*["']([\w.-]+)"""),
+    re.compile(r"""\.get\(\s*["']([\w.-]+)["']\s*,\s*["']"""),
+    re.compile(r"""\bparams\.get\(\s*["']([\w.-]+)"""),
 )
 
 PATH_TEMPLATE = re.compile(r"<(?:\w+:)?(\w+)>|:(\w+)|\{(\w+)(?::[^}]*)?\}")
@@ -82,14 +93,25 @@ def _blocked(path: str) -> bool:
     return any(marker in lowered for marker in BLOCKED)
 
 
-def detect_param(context: list[str], fallback: str = "id") -> str:
-    """Parameter name the handler reads, from the finding's context window."""
+def detect_param(context: list[str], fallback: str = "id", snippet: str = "") -> str:
+    """Parameter name the handler reads, from the finding's context window.
+
+    The sink line comes first: an app that reads several parameters declares
+    them in one order and uses them in another. Whoever appears in the
+    vulnerable expression is the one to hit.
+    """
+    candidates: list[str] = []
     for line in context or []:
         for pattern in PARAM_PATTERNS:
-            match = pattern.search(line)
-            if match:
-                return match.group(1)
-    return fallback
+            for match in pattern.finditer(line):
+                candidates.append(match.group(1))
+    if not candidates:
+        return fallback
+    if snippet:
+        for name in candidates:
+            if name and name in snippet:
+                return name
+    return candidates[0]
 
 
 def resolve_endpoint(endpoint: str) -> tuple[str, str | None]:
@@ -110,7 +132,9 @@ def build_requests(finding: dict, endpoint: str, port: int = 80) -> list[dict]:
     """Materialize the request list for one finding. Pure: no network."""
     kind = finding.get("kind", "")
     path, slot = resolve_endpoint(endpoint)
-    param = detect_param(finding.get("context", []))
+    param = finding.get("param") or detect_param(
+        finding.get("context", []), snippet=finding.get("snippet", "")
+    )
     requests: list[dict] = []
 
     if kind == "IDOR / BOLA":
@@ -170,8 +194,18 @@ def _fetch(opener, url: str) -> dict:
         status = error.code
         headers = dict(error.headers or {})
     except Exception as error:  # noqa: BLE001 - surfaced as an error row
+        JOURNAL.append({
+            "at": round(started, 3), "url": url, "status": 0, "bytes": 0,
+            "ms": int((time.time() - started) * 1000), "error": f"{type(error).__name__}",
+        })
+        del JOURNAL[:-MAX_JOURNAL]
         return {"status": 0, "body": b"", "headers": {}, "ms": int((time.time() - started) * 1000),
                 "error": f"{type(error).__name__}: {error}"}
+    JOURNAL.append({
+        "at": round(started, 3), "url": url, "status": status, "bytes": len(body),
+        "ms": int((time.time() - started) * 1000), "error": None,
+    })
+    del JOURNAL[:-MAX_JOURNAL]
     return {
         "status": status,
         "body": body,

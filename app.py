@@ -22,17 +22,34 @@ from urllib.parse import parse_qs, urlparse
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from adkit import __version__, patterns, probe
+from adkit import __version__, fixes, patterns, probe
 from adkit.audit import Audit, analyze_sources
 from adkit.generate import generate_probe, generate_report, pick_endpoint
+from adkit.ratelimit import BUDGET
 from adkit.ssh import SSHError, backend_name, connect, test_connection
 
-BASE = Path(__file__).resolve().parent
-WEB = BASE / "web"
-KNOWLEDGE = BASE / "knowledge"
+def _resource_base() -> Path:
+    """Каталог с web/, knowledge/, demo/ — внутри exe или рядом с исходником."""
+    frozen = getattr(sys, "frozen", False)
+    if frozen:
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+    return Path(__file__).resolve().parent
+
+
+def _data_base() -> Path:
+    """Каталог, куда можно писать: config.json рядом с exe, не во временной распаковке."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+BASE = _data_base()
+RES = _resource_base()
+WEB = RES / "web"
+KNOWLEDGE = RES / "knowledge"
 CONFIG_PATH = BASE / "config.json"
-DEMO_AUDIT = BASE / "demo" / "audit.json"
-DEMO_SRC = BASE / "demo" / "src"
+DEMO_AUDIT = RES / "demo" / "audit.json"
+DEMO_SRC = RES / "demo" / "src"
 
 DEFAULT_CONFIG = {
     "target": {
@@ -55,6 +72,7 @@ SESSION: dict = {
     "demo": False,
 }
 JOBS: dict[str, dict] = {}
+SHUTDOWN = threading.Event()
 
 
 def load_config() -> dict:
@@ -225,6 +243,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.handle_files(query.get("path", ["/"])[0])
             elif path == "/api/file":
                 self.handle_file(query.get("path", [""])[0])
+            elif path == "/api/fix":
+                self.handle_fix(query.get("id", [""])[0])
+            elif path == "/api/traffic":
+                self.send_json(200, traffic_profile())
             elif path == "/api/demo":
                 self.send_json(200, demo_audit())
             elif path == "/api/last":
@@ -321,6 +343,9 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(400, {"error": "run an audit first"})
                     return
                 self.send_json(200, {"markdown": generate_report(audit)})
+            elif path == "/api/shutdown":
+                self.send_json(200, {"stopping": True})
+                SHUTDOWN.set()
             else:
                 self.send_json(404, {"error": "not found"})
         except probe.BudgetExhausted as exc:
@@ -333,9 +358,17 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:  # noqa: BLE001 - surfaced to the UI
             self.send_json(500, {"error": f"{type(exc).__name__}: {exc}"})
 
+    @staticmethod
+    def is_checker_path(path: str) -> bool:
+        parts = [part for part in path.split("/") if part]
+        return "_checker" in parts
+
     def handle_files(self, path: str) -> None:
         if not path.startswith("/"):
             self.send_json(400, {"error": "absolute path required"})
+            return
+        if self.is_checker_path(path):
+            self.send_json(403, {"error": "каталог чекера не читается: /_checker/* вне зоны аудита"})
             return
         if SESSION["demo"]:
             resolved = demo_resolve(path)
@@ -361,6 +394,9 @@ class Handler(BaseHTTPRequestHandler):
     def handle_file(self, path: str) -> None:
         if not path:
             self.send_json(400, {"error": "path required"})
+            return
+        if self.is_checker_path(path):
+            self.send_json(403, {"error": "файлы чекера не читаются: /_checker/* вне зоны аудита"})
             return
         resolved: Path | None = None
         if SESSION["demo"]:
@@ -388,6 +424,85 @@ class Handler(BaseHTTPRequestHandler):
         })
 
 
+    def handle_fix(self, finding_id: str) -> None:
+        audit = SESSION.get("last_audit") or {}
+        finding = next((item for item in audit.get("findings", []) if item.get("id") == finding_id), None)
+        if finding is None:
+            self.send_json(404, {"error": "находка не найдена — перезапустите аудит"})
+            return
+        fix = fixes.build_fix(finding.get("rule", ""), finding.get("language", "any"), finding.get("snippet", ""))
+        self.send_json(200, {
+            "finding": {
+                "id": finding.get("id"),
+                "kind": finding.get("kind"),
+                "file": finding.get("file"),
+                "line": finding.get("line"),
+                "severity": finding.get("severity"),
+            },
+            "fix": fix,
+        })
+
+
+def traffic_profile() -> dict:
+    """Профиль трафика инструмента — доказательство, что это не флуд."""
+    events = list(probe.JOURNAL)
+    now = time.time()
+    last_minute = [event for event in events if now - event.get("at", 0) <= 60]
+    sends = [event for event in events if event.get("status") is not None]
+    bytes_total = sum(event.get("bytes", 0) for event in sends)
+    ms_values = [event.get("ms", 0) for event in sends if event.get("ms")]
+    statuses: dict[str, int] = {}
+    for event in sends:
+        key = str(event.get("status", 0))
+        statuses[key] = statuses.get(key, 0) + 1
+
+    capacity = BUDGET.capacity
+    window = BUDGET.window
+
+    return {
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "events": events[-200:],
+        "summary": {
+            "total": len(events),
+            "last_minute": len(last_minute),
+            "bytes": bytes_total,
+            "avg_bytes": round(bytes_total / max(1, len(sends))),
+            "avg_ms": round(sum(ms_values) / max(1, len(ms_values))),
+            "statuses": statuses,
+        },
+        "caps": {
+            "max_requests_per_probe": probe.MAX_REQUESTS,
+            "baseline_requests": 1,
+            "min_delay_s": probe.MIN_DELAY,
+            "timeout_s": probe.TIMEOUT,
+            "max_body_bytes": probe.MAX_BODY,
+            "budget_capacity": capacity,
+            "budget_window_s": window,
+            "checker_paths_blocked": list(probe.BLOCKED),
+        },
+        "claims": [
+            f"не больше {probe.MAX_REQUESTS} GET на пробу, плюс один базовый запрос для сравнения",
+            f"пауза между запросами не меньше {probe.MIN_DELAY:.2f} с — это меньше 10 запросов в секунду на пробу",
+            f"общий бюджет процесса: {capacity} запросов за {window} с, списывается до отправки",
+            "только GET без тела; POST не отправляется, изменения состояния — только заготовкой вручную",
+            "ответ читается не больше 64 КБ, редиректы не переходятся, id не перебираются",
+            "пути /_checker/* блокируются до отправки и в журнал попадают как blocked",
+        ],
+    }
+
+
+def build_server(host: str, port: int, demo: bool = False) -> ThreadingHTTPServer:
+    """Готовит сервер и сессию. Используется и CLI, и лаунчером приложения."""
+    SESSION["config"] = load_config()
+    SESSION["demo"] = demo
+    if demo:
+        try:
+            SESSION["last_audit"] = demo_audit()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[ad-audit] demo data unavailable: {exc}")
+    return ThreadingHTTPServer((host, port), Handler)
+
+
 def main() -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -400,15 +515,7 @@ def main() -> int:
     parser.add_argument("--demo", action="store_true")
     args = parser.parse_args()
 
-    SESSION["config"] = load_config()
-    SESSION["demo"] = args.demo
-    if args.demo:
-        try:
-            SESSION["last_audit"] = demo_audit()
-        except Exception as exc:  # noqa: BLE001
-            print(f"[ad-audit] demo data unavailable: {exc}")
-
-    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    server = build_server(args.host, args.port, args.demo)
     print(f"AD Audit {__version__} on http://{args.host}:{args.port}  backend={backend_name()}  demo={args.demo}")
     print("Read-only audit. Bind 127.0.0.1 only. Ctrl+C to stop.")
     try:

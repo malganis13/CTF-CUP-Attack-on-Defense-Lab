@@ -1,6 +1,10 @@
 # local target config (may contain a host and key path)
 config.json
 
+# lab artifacts: keys and state of the rehearsal box
+sim/keys/
+sim/.lab.json
+
 # python
 __pycache__/
 *.py[cod]
