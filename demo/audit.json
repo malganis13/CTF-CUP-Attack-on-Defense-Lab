@@ -1,6 +1,6 @@
 {
   "host": "demo@vulnbox:22 (fixture)",
-  "generated_at": "2026-11-14T18:42:47Z",
+  "generated_at": "2026-11-14T21:40:37Z",
   "services": [
     {
       "port": 8081,
@@ -290,7 +290,7 @@
       "path": "/srv/notes/app.py",
       "language": "python",
       "lines": 68,
-      "findings": 9
+      "findings": 8
     },
     {
       "path": "/srv/portal/composer.json",
@@ -355,6 +355,54 @@
       "line": 33
     },
     {
+      "path": "/invoice",
+      "method": "GET",
+      "file": "/srv/billing/BillingController.java",
+      "line": 21
+    },
+    {
+      "path": "/file",
+      "method": "GET",
+      "file": "/srv/billing/BillingController.java",
+      "line": 27
+    },
+    {
+      "path": "/ping",
+      "method": "GET",
+      "file": "/srv/billing/BillingController.java",
+      "line": 33
+    },
+    {
+      "path": "/download",
+      "method": "GET",
+      "file": "/srv/files/app.py",
+      "line": 18
+    },
+    {
+      "path": "/view",
+      "method": "GET",
+      "file": "/srv/files/app.py",
+      "line": 25
+    },
+    {
+      "path": "/browse",
+      "method": "GET",
+      "file": "/srv/files/app.py",
+      "line": 32
+    },
+    {
+      "path": "/upload",
+      "method": "POST",
+      "file": "/srv/files/app.py",
+      "line": 39
+    },
+    {
+      "path": "/go",
+      "method": "GET",
+      "file": "/srv/files/app.py",
+      "line": 48
+    },
+    {
       "path": "/download",
       "method": "GET",
       "file": "/srv/files/app.py",
@@ -401,6 +449,48 @@
       "method": "GET",
       "file": "/srv/gateway/main.go",
       "line": 53
+    },
+    {
+      "path": "/notes/:id",
+      "method": "GET",
+      "file": "/srv/gateway/main.go",
+      "line": 51
+    },
+    {
+      "path": "/thumb",
+      "method": "GET",
+      "file": "/srv/gateway/main.go",
+      "line": 52
+    },
+    {
+      "path": "/file",
+      "method": "GET",
+      "file": "/srv/gateway/main.go",
+      "line": 53
+    },
+    {
+      "path": "/lookup",
+      "method": "GET",
+      "file": "/srv/lookup/app.rb",
+      "line": 6
+    },
+    {
+      "path": "/run",
+      "method": "GET",
+      "file": "/srv/lookup/app.rb",
+      "line": 12
+    },
+    {
+      "path": "/load",
+      "method": "GET",
+      "file": "/srv/lookup/app.rb",
+      "line": 16
+    },
+    {
+      "path": "/eval",
+      "method": "GET",
+      "file": "/srv/lookup/app.rb",
+      "line": 20
     },
     {
       "path": "/lookup",
@@ -457,22 +547,64 @@
       "line": 61
     },
     {
-      "path": "id",
-      "method": "PARAM",
-      "file": "/srv/portal/index.php",
-      "line": 6
+      "path": "/notes/<int:note_id>",
+      "method": "GET",
+      "file": "/srv/notes/app.py",
+      "line": 29
     },
     {
-      "path": "thumb",
-      "method": "PARAM",
-      "file": "/srv/portal/index.php",
-      "line": 9
+      "path": "/search",
+      "method": "GET",
+      "file": "/srv/notes/app.py",
+      "line": 39
     },
     {
-      "path": "page",
-      "method": "PARAM",
-      "file": "/srv/portal/index.php",
-      "line": 13
+      "path": "/raw",
+      "method": "GET",
+      "file": "/srv/notes/app.py",
+      "line": 47
+    },
+    {
+      "path": "/preview",
+      "method": "GET",
+      "file": "/srv/notes/app.py",
+      "line": 54
+    },
+    {
+      "path": "/hello",
+      "method": "GET",
+      "file": "/srv/notes/app.py",
+      "line": 61
+    },
+    {
+      "path": "/register",
+      "method": "POST",
+      "file": "/srv/profile/app.py",
+      "line": 21
+    },
+    {
+      "path": "/import",
+      "method": "POST",
+      "file": "/srv/profile/app.py",
+      "line": 39
+    },
+    {
+      "path": "/me",
+      "method": "GET",
+      "file": "/srv/profile/app.py",
+      "line": 46
+    },
+    {
+      "path": "/avatar",
+      "method": "GET",
+      "file": "/srv/profile/app.py",
+      "line": 53
+    },
+    {
+      "path": "/profile/<int:profile_id>",
+      "method": "GET",
+      "file": "/srv/profile/app.py",
+      "line": 60
     },
     {
       "path": "/register",
@@ -523,6 +655,36 @@
       "line": 32
     },
     {
+      "path": "/lookup",
+      "method": "GET",
+      "file": "/srv/rustapp/main.rs",
+      "line": 30
+    },
+    {
+      "path": "/thumb",
+      "method": "GET",
+      "file": "/srv/rustapp/main.rs",
+      "line": 31
+    },
+    {
+      "path": "/read",
+      "method": "GET",
+      "file": "/srv/rustapp/main.rs",
+      "line": 32
+    },
+    {
+      "path": "/ticket",
+      "method": "GET",
+      "file": "/srv/support/SupportController.cs",
+      "line": 13
+    },
+    {
+      "path": "/convert",
+      "method": "GET",
+      "file": "/srv/support/SupportController.cs",
+      "line": 20
+    },
+    {
       "path": "/ticket",
       "method": "GET",
       "file": "/srv/support/SupportController.cs",
@@ -557,7 +719,9 @@
       "why": "A query is assembled with a template literal. The interpolated value becomes SQL syntax.",
       "patch": "Use placeholders: db.query('… WHERE id = $1', [id]).",
       "checker_risk": "low",
-      "language": "javascript"
+      "language": "javascript",
+      "kind_ru": "SQL-инъекция",
+      "patch_ru": "Плейсхолдеры: db.query('… WHERE id = $1', [id])."
     },
     {
       "id": "c16a05f673",
@@ -580,7 +744,9 @@
       "why": "A file read or send call receives request-controlled data.",
       "patch": "Normalize, resolve symlinks, and check the prefix before reading or sending.",
       "checker_risk": "low",
-      "language": "javascript"
+      "language": "javascript",
+      "kind_ru": "Обход пути",
+      "patch_ru": "Нормализовать, разыменовать симлинки, проверить префикс до открытия файла."
     },
     {
       "id": "1622db3bb8",
@@ -603,7 +769,9 @@
       "why": "child_process receives request-derived data.",
       "patch": "Use execFile with an argument array, and allowlist the program.",
       "checker_risk": "low",
-      "language": "javascript"
+      "language": "javascript",
+      "kind_ru": "Инъекция команд",
+      "patch_ru": "execFile с массивом аргументов, программу — по списку допустимых."
     },
     {
       "id": "816aa962f1",
@@ -626,7 +794,9 @@
       "why": "eval() receives request data.",
       "patch": "Remove eval. Parse JSON or dispatch through a lookup table.",
       "checker_risk": "low",
-      "language": "javascript"
+      "language": "javascript",
+      "kind_ru": "Выполнение кода",
+      "patch_ru": "Убрать eval: JSON.parse или диспетчеризация по таблице."
     },
     {
       "id": "bbee24dde5",
@@ -649,7 +819,9 @@
       "why": "jwt.decode is called without a key or algorithms list, so nothing is verified.",
       "patch": "Use jwt.verify(token, key, { algorithms: ['HS256'] }).",
       "checker_risk": "low",
-      "language": "javascript"
+      "language": "javascript",
+      "kind_ru": "Обход проверки JWT",
+      "patch_ru": "jwt.verify(token, key, { algorithms: ['HS256'] })."
     },
     {
       "id": "61490b046c",
@@ -672,7 +844,9 @@
       "why": "A query is assembled with +, % or .format(). User input becomes SQL syntax.",
       "patch": "Use parameter binding. Allowlist column and sort names; they cannot be bound.",
       "checker_risk": "low",
-      "language": "java"
+      "language": "java",
+      "kind_ru": "SQL-инъекция",
+      "patch_ru": "Только связывание параметров. Имена колонок и сортировку — по списку допустимых значений, их связать нельзя."
     },
     {
       "id": "fd79c69b3a",
@@ -695,7 +869,9 @@
       "why": "A file path is built from request data.",
       "patch": "Normalise and check the prefix; prefer an allowlist of names.",
       "checker_risk": "low",
-      "language": "java"
+      "language": "java",
+      "kind_ru": "Обход пути",
+      "patch_ru": "Нормализовать и проверить префикс; лучше — список допустимых имён."
     },
     {
       "id": "70de9d4498",
@@ -717,7 +893,9 @@
       "why": "A shell or command executor is reachable from request data.",
       "patch": "Avoid the shell; pass an argument vector. Allowlist the command and its arguments.",
       "checker_risk": "low",
-      "language": "java"
+      "language": "java",
+      "kind_ru": "Инъекция команд",
+      "patch_ru": "Убрать shell: передавать вектор аргументов. Команду и аргументы сверять со списком допустимых."
     },
     {
       "id": "99fc8d645e",
@@ -740,7 +918,11 @@
       "why": "A filesystem path is joined from request-controlled data without a containment check.",
       "patch": "Resolve the real path and verify it stays under the intended root; prefer an allowlist.",
       "checker_risk": "low",
-      "language": "python"
+      "language": "python",
+      "param": "name",
+      "endpoint": "/download",
+      "kind_ru": "Обход пути",
+      "patch_ru": "Разрешить реальный путь (realpath) и проверить, что он внутри каталога; сверх того — список допустимых имён."
     },
     {
       "id": "036fa6d292",
@@ -763,7 +945,11 @@
       "why": "A filesystem path is joined from request-controlled data without a containment check.",
       "patch": "Resolve the real path and verify it stays under the intended root; prefer an allowlist.",
       "checker_risk": "low",
-      "language": "python"
+      "language": "python",
+      "param": "name",
+      "endpoint": "/view",
+      "kind_ru": "Обход пути",
+      "patch_ru": "Разрешить реальный путь (realpath) и проверить, что он внутри каталога; сверх того — список допустимых имён."
     },
     {
       "id": "c4e1e1896d",
@@ -786,7 +972,11 @@
       "why": "A filesystem path is joined from request-controlled data without a containment check.",
       "patch": "Resolve the real path and verify it stays under the intended root; prefer an allowlist.",
       "checker_risk": "low",
-      "language": "python"
+      "language": "python",
+      "param": "name",
+      "endpoint": "/browse",
+      "kind_ru": "Обход пути",
+      "patch_ru": "Разрешить реальный путь (realpath) и проверить, что он внутри каталога; сверх того — список допустимых имён."
     },
     {
       "id": "94cce227a0",
@@ -809,7 +999,9 @@
       "why": "A filesystem path is joined from request-controlled data without a containment check.",
       "patch": "Resolve the real path and verify it stays under the intended root; prefer an allowlist.",
       "checker_risk": "low",
-      "language": "python"
+      "language": "python",
+      "kind_ru": "Обход пути",
+      "patch_ru": "Разрешить реальный путь (realpath) и проверить, что он внутри каталога; сверх того — список допустимых имён."
     },
     {
       "id": "365aae0f34",
@@ -832,7 +1024,11 @@
       "why": "A query is assembled with fmt.Sprintf. The interpolated value becomes SQL syntax.",
       "patch": "Pass values as query arguments: db.QueryRow(\"… WHERE id = $1\", id).",
       "checker_risk": "low",
-      "language": "go"
+      "language": "go",
+      "param": "id",
+      "endpoint": "/",
+      "kind_ru": "SQL-инъекция",
+      "patch_ru": "Передавать значения аргументами: db.QueryRow(\"… WHERE id = $1\", id)."
     },
     {
       "id": "a1275f8b25",
@@ -855,7 +1051,11 @@
       "why": "exec.Command receives request-controlled data.",
       "patch": "Allowlist the binary and pass fixed arguments; never build the command from input.",
       "checker_risk": "low",
-      "language": "go"
+      "language": "go",
+      "param": "name",
+      "endpoint": "/",
+      "kind_ru": "Инъекция команд",
+      "patch_ru": "Бинарник и аргументы — по списку допустимых; команду из ввода не собирать."
     },
     {
       "id": "c73ff04f16",
@@ -878,7 +1078,9 @@
       "why": "A file read or send call receives request-controlled data.",
       "patch": "Normalize, resolve symlinks, and check the prefix before reading or sending.",
       "checker_risk": "low",
-      "language": "go"
+      "language": "go",
+      "kind_ru": "Обход пути",
+      "patch_ru": "Нормализовать, разыменовать симлинки, проверить префикс до открытия файла."
     },
     {
       "id": "a9109d4a5c",
@@ -901,7 +1103,9 @@
       "why": "An unbounded copy or format function writes into a fixed buffer.",
       "patch": "Use strncpy/snprintf and check the return value, or a sized buffer type.",
       "checker_risk": "low",
-      "language": "c"
+      "language": "c",
+      "kind_ru": "Небезопасные строки C",
+      "patch_ru": "strncpy/snprintf с проверкой результата — либо тип буфера с длиной."
     },
     {
       "id": "3923486a85",
@@ -924,7 +1128,9 @@
       "why": "An unbounded copy or format function writes into a fixed buffer.",
       "patch": "Use strncpy/snprintf and check the return value, or a sized buffer type.",
       "checker_risk": "low",
-      "language": "c"
+      "language": "c",
+      "kind_ru": "Небезопасные строки C",
+      "patch_ru": "strncpy/snprintf с проверкой результата — либо тип буфера с длиной."
     },
     {
       "id": "3efa099a82",
@@ -947,7 +1153,9 @@
       "why": "A shell or process launcher is called from C/C++ code.",
       "patch": "Use execve with an argument vector; never pass input through a shell.",
       "checker_risk": "low",
-      "language": "c"
+      "language": "c",
+      "kind_ru": "Инъекция команд",
+      "patch_ru": "execve с вектором аргументов; ввод через оболочку не пропускать."
     },
     {
       "id": "8a364e447f",
@@ -970,7 +1178,9 @@
       "why": "A query is built with string interpolation.",
       "patch": "Use a placeholder: where('id = ?', id).",
       "checker_risk": "low",
-      "language": "ruby"
+      "language": "ruby",
+      "kind_ru": "SQL-инъекция",
+      "patch_ru": "Плейсхолдер: where('id = ?', id)."
     },
     {
       "id": "63f296561b",
@@ -993,7 +1203,9 @@
       "why": "A shell call receives request data.",
       "patch": "Use the array form of system() with validated arguments.",
       "checker_risk": "low",
-      "language": "ruby"
+      "language": "ruby",
+      "kind_ru": "Инъекция команд",
+      "patch_ru": "Массивная форма system() с проверенными аргументами."
     },
     {
       "id": "9d6ce4a507",
@@ -1016,7 +1228,9 @@
       "why": "Untrusted data reaches a deserializer that can construct objects or execute code.",
       "patch": "Use a data-only format (JSON), signed payloads, or an allowlist of classes.",
       "checker_risk": "low",
-      "language": "ruby"
+      "language": "ruby",
+      "kind_ru": "Небезопасная десериализация",
+      "patch_ru": "Только формат данных (JSON), подписанные полезные нагрузки или список разрешённых классов."
     },
     {
       "id": "def93455ab",
@@ -1037,7 +1251,9 @@
       "why": "eval receives request data.",
       "patch": "Remove eval; dispatch through an explicit allowlist.",
       "checker_risk": "low",
-      "language": "ruby"
+      "language": "ruby",
+      "kind_ru": "Выполнение кода",
+      "patch_ru": "Убрать eval; диспетчеризация по явному списку."
     },
     {
       "id": "6b5669dd50",
@@ -1060,7 +1276,9 @@
       "why": "os.execute runs a shell command.",
       "patch": "Avoid the shell; validate every argument against an allowlist.",
       "checker_risk": "low",
-      "language": "lua"
+      "language": "lua",
+      "kind_ru": "Инъекция команд",
+      "patch_ru": "Убрать оболочку; каждый аргумент сверять со списком допустимых."
     },
     {
       "id": "8ed8a6dafa",
@@ -1083,7 +1301,9 @@
       "why": "An object is fetched by id alone. The owner is not part of the query.",
       "patch": "Bind the object to the authenticated principal: WHERE id=? AND owner=?.",
       "checker_risk": "low",
-      "language": "python"
+      "language": "python",
+      "kind_ru": "IDOR: чужой объект по id",
+      "patch_ru": "Привяжите объект к текущему пользователю: WHERE id=? AND owner=?; иначе любой id отдаёт чужое."
     },
     {
       "id": "f5fdafe1ca",
@@ -1106,7 +1326,11 @@
       "why": "A query is assembled with an f-string. User input becomes SQL syntax.",
       "patch": "Pass values as bound parameters: WHERE title LIKE ? with (value,). Never format SQL.",
       "checker_risk": "low",
-      "language": "python"
+      "language": "python",
+      "param": "q",
+      "endpoint": "/search",
+      "kind_ru": "SQL-инъекция",
+      "patch_ru": "Передавайте значения параметрами: WHERE title LIKE ? и кортеж (value,). SQL не форматировать."
     },
     {
       "id": "ae788560d5",
@@ -1129,7 +1353,11 @@
       "why": "A query is assembled with +, % or .format(). User input becomes SQL syntax.",
       "patch": "Use parameter binding. Allowlist column and sort names; they cannot be bound.",
       "checker_risk": "low",
-      "language": "python"
+      "language": "python",
+      "param": "q",
+      "endpoint": "/raw",
+      "kind_ru": "SQL-инъекция",
+      "patch_ru": "Только связывание параметров. Имена колонок и сортировку — по списку допустимых значений, их связать нельзя."
     },
     {
       "id": "7a034e57ca",
@@ -1152,7 +1380,11 @@
       "why": "A shell or command executor is reachable from request data.",
       "patch": "Avoid the shell; pass an argument vector. Allowlist the command and its arguments.",
       "checker_risk": "low",
-      "language": "python"
+      "language": "python",
+      "param": "name",
+      "endpoint": "/preview",
+      "kind_ru": "Инъекция команд",
+      "patch_ru": "Убрать shell: передавать вектор аргументов. Команду и аргументы сверять со списком допустимых."
     },
     {
       "id": "b796c9bdf1",
@@ -1175,7 +1407,11 @@
       "why": "A SQL string is concatenated with request data.",
       "patch": "Bind the value; never concatenate it into the statement.",
       "checker_risk": "low",
-      "language": "php"
+      "language": "php",
+      "param": "id",
+      "endpoint": "/",
+      "kind_ru": "SQL-инъекция",
+      "patch_ru": "Связать значение параметром; в текст запроса не подставлять."
     },
     {
       "id": "5031e71a72",
@@ -1198,7 +1434,11 @@
       "why": "A shell function receives request data.",
       "patch": "Use escapeshellarg on every argument, or drop the shell call entirely.",
       "checker_risk": "low",
-      "language": "php"
+      "language": "php",
+      "param": "thumb",
+      "endpoint": "/",
+      "kind_ru": "Инъекция команд",
+      "patch_ru": "escapeshellarg на каждый аргумент — или убрать вызов оболочки совсем."
     },
     {
       "id": "86c4c4163c",
@@ -1221,7 +1461,11 @@
       "why": "include/require takes a request-derived path.",
       "patch": "Map an allowlisted key to a fixed file; never include a path from input.",
       "checker_risk": "low",
-      "language": "php"
+      "language": "php",
+      "param": "page",
+      "endpoint": "/",
+      "kind_ru": "Локальное включение файла",
+      "patch_ru": "Ключ из списка допустимых отображать в фиксированный файл; путь из ввода не включать."
     },
     {
       "id": "4aa0b0cc5b",
@@ -1244,7 +1488,11 @@
       "why": "eval() receives request data.",
       "patch": "Remove eval. There is no safe way to run request data as PHP.",
       "checker_risk": "low",
-      "language": "php"
+      "language": "php",
+      "param": "code",
+      "endpoint": "/",
+      "kind_ru": "Выполнение кода",
+      "patch_ru": "Убрать eval. Безопасного способа выполнять ввод как PHP нет."
     },
     {
       "id": "b3b35192be",
@@ -1267,7 +1515,9 @@
       "why": "Untrusted data reaches a deserializer that can construct objects or execute code.",
       "patch": "Use a data-only format (JSON), signed payloads, or an allowlist of classes.",
       "checker_risk": "low",
-      "language": "php"
+      "language": "php",
+      "kind_ru": "Небезопасная десериализация",
+      "patch_ru": "Только формат данных (JSON), подписанные полезные нагрузки или список разрешённых классов."
     },
     {
       "id": "0b51b60ff1",
@@ -1290,7 +1540,9 @@
       "why": "A privileged field such as role is taken from the request body.",
       "patch": "Use an explicit allowlist of user-editable fields; set role server-side.",
       "checker_risk": "low",
-      "language": "python"
+      "language": "python",
+      "kind_ru": "Массовое присваивание полей",
+      "patch_ru": "Явный список полей, которые пользователь может менять; роль ставить на сервере."
     },
     {
       "id": "e9b38b0070",
@@ -1313,7 +1565,9 @@
       "why": "Untrusted data reaches a deserializer that can construct objects or execute code.",
       "patch": "Use a data-only format (JSON), signed payloads, or an allowlist of classes.",
       "checker_risk": "low",
-      "language": "python"
+      "language": "python",
+      "kind_ru": "Небезопасная десериализация",
+      "patch_ru": "Только формат данных (JSON), подписанные полезные нагрузки или список разрешённых классов."
     },
     {
       "id": "a92baa9b7f",
@@ -1336,7 +1590,11 @@
       "why": "JWT verification is disabled or the none algorithm is accepted.",
       "patch": "Verify signature and algorithms explicitly; never trust alg from the token.",
       "checker_risk": "low",
-      "language": "python"
+      "language": "python",
+      "param": "Authorization",
+      "endpoint": "/me",
+      "kind_ru": "Обход проверки JWT",
+      "patch_ru": "Проверять подпись и список алгоритмов явно; alg из токена не доверять никогда."
     },
     {
       "id": "a097c14edf",
@@ -1359,7 +1617,11 @@
       "why": "An object is fetched by id alone. The owner is not part of the query.",
       "patch": "Bind the object to the authenticated principal: WHERE id=? AND owner=?.",
       "checker_risk": "low",
-      "language": "python"
+      "language": "python",
+      "param": "bio",
+      "endpoint": "/register",
+      "kind_ru": "IDOR: чужой объект по id",
+      "patch_ru": "Привяжите объект к текущему пользователю: WHERE id=? AND owner=?; иначе любой id отдаёт чужое."
     },
     {
       "id": "f5b5ab3698",
@@ -1382,7 +1644,11 @@
       "why": "A query is assembled with format!. The interpolated value becomes SQL syntax.",
       "patch": "Use query arguments: sqlx::query(\"… WHERE id = $1\").bind(id).",
       "checker_risk": "low",
-      "language": "rust"
+      "language": "rust",
+      "param": "id",
+      "endpoint": "/",
+      "kind_ru": "SQL-инъекция",
+      "patch_ru": "Аргументы запроса: sqlx::query(\"… WHERE id = $1\").bind(id)."
     },
     {
       "id": "66c0a29481",
@@ -1405,7 +1671,11 @@
       "why": "Command::arg receives a formatted value.",
       "patch": "Validate against an allowlist before passing an argument to a child process.",
       "checker_risk": "low",
-      "language": "rust"
+      "language": "rust",
+      "param": "name",
+      "endpoint": "/",
+      "kind_ru": "Инъекция команд",
+      "patch_ru": "Проверить значение по списку допустимых до передачи аргументом дочернему процессу."
     },
     {
       "id": "f3c2858130",
@@ -1428,7 +1698,11 @@
       "why": "A filesystem read receives request-derived data.",
       "patch": "Canonicalise and check the prefix; prefer an allowlist of file names.",
       "checker_risk": "low",
-      "language": "rust"
+      "language": "rust",
+      "param": "name",
+      "endpoint": "/",
+      "kind_ru": "Обход пути",
+      "patch_ru": "Канонизировать и проверить префикс; лучше — список допустимых имён файлов."
     },
     {
       "id": "efb01ff4e9",
@@ -1451,7 +1725,9 @@
       "why": "A query is assembled with +, % or .format(). User input becomes SQL syntax.",
       "patch": "Use parameter binding. Allowlist column and sort names; they cannot be bound.",
       "checker_risk": "low",
-      "language": "csharp"
+      "language": "csharp",
+      "kind_ru": "SQL-инъекция",
+      "patch_ru": "Только связывание параметров. Имена колонок и сортировку — по списку допустимых значений, их связать нельзя."
     },
     {
       "id": "613ee5ef06",
@@ -1474,7 +1750,9 @@
       "why": "Process.Start takes request-derived or user-supplied arguments.",
       "patch": "Allowlist the executable and pass fixed arguments.",
       "checker_risk": "low",
-      "language": "csharp"
+      "language": "csharp",
+      "kind_ru": "Инъекция команд",
+      "patch_ru": "Исполняемый файл по списку допустимых, аргументы фиксированные."
     },
     {
       "id": "b8ddeba0aa",
@@ -1497,7 +1775,9 @@
       "why": "A query variable is executed directly. Trace where that variable was built.",
       "patch": "Check the construction site; if it contains request data, bind parameters instead.",
       "checker_risk": "low",
-      "language": "go"
+      "language": "go",
+      "kind_ru": "SQL-инъекция",
+      "patch_ru": "Посмотрите место сборки: если внутри данные запроса — перейти на параметры. Переменную из конфига оставить как есть."
     },
     {
       "id": "27a262843f",
@@ -1520,7 +1800,9 @@
       "why": "memcpy is used without a sizeof bound in the surrounding lines.",
       "patch": "Bound the length against the destination size: min(len, sizeof(dst)).",
       "checker_risk": "low",
-      "language": "c"
+      "language": "c",
+      "kind_ru": "Небезопасное копирование памяти",
+      "patch_ru": "Ограничить длину размером приёмника: min(len, sizeof(dst))."
     },
     {
       "id": "cfbd6f1c05",
@@ -1543,7 +1825,9 @@
       "why": "loadstring compiles a string at runtime.",
       "patch": "Load a fixed chunk; never compile request data.",
       "checker_risk": "low",
-      "language": "lua"
+      "language": "lua",
+      "kind_ru": "Выполнение кода",
+      "patch_ru": "Загружать фиксированный чанк; ввод как код не компилировать."
     },
     {
       "id": "cf12b0087b",
@@ -1566,7 +1850,9 @@
       "why": "A password, token or key is embedded in source or a default value.",
       "patch": "Load secrets from the environment; rotate this value before deployment.",
       "checker_risk": "low",
-      "language": "python"
+      "language": "python",
+      "kind_ru": "Секрет в коде",
+      "patch_ru": "Читать из окружения; это значение сменить до выкладки — оно уже в репозитории и в образах."
     },
     {
       "id": "35519f110f",
@@ -1589,7 +1875,9 @@
       "why": "A query variable is executed directly. Trace where that variable was built.",
       "patch": "Check the construction site; if it contains request data, bind parameters instead.",
       "checker_risk": "low",
-      "language": "python"
+      "language": "python",
+      "kind_ru": "SQL-инъекция",
+      "patch_ru": "Посмотрите место сборки: если внутри данные запроса — перейти на параметры. Переменную из конфига оставить как есть."
     },
     {
       "id": "14678eb312",
@@ -1609,7 +1897,9 @@
       "why": "Debug mode or an interactive debugger is enabled.",
       "patch": "Disable debug and reload in production; it often exposes a console.",
       "checker_risk": "low",
-      "language": "python"
+      "language": "python",
+      "kind_ru": "Отладочный режим",
+      "patch_ru": "Выключить debug и перезагрузить сервис: он часто открывает консоль и трассировки с данными."
     },
     {
       "id": "50ca5d4491",
@@ -1632,7 +1922,9 @@
       "why": "An uploaded file is moved into place without a name or type check.",
       "patch": "Generate the stored name, allowlist extensions, store outside the web root.",
       "checker_risk": "low",
-      "language": "php"
+      "language": "php",
+      "kind_ru": "Небезопасная загрузка",
+      "patch_ru": "Имя генерировать, расширения по списку, хранить вне веб-корня."
     },
     {
       "id": "01567cc380",
@@ -1655,7 +1947,11 @@
       "why": "A server-side HTTP client receives request-controlled URL data.",
       "patch": "Allowlist scheme, host and port; block link-local and metadata addresses.",
       "checker_risk": "low",
-      "language": "python"
+      "language": "python",
+      "param": "url",
+      "endpoint": "/avatar",
+      "kind_ru": "SSRF: запрос от имени сервера",
+      "patch_ru": "Список допустимых схем, хостов и портов; блокировать link-local и адреса метаданных."
     },
     {
       "id": "d65878ff2b",
@@ -1678,7 +1974,9 @@
       "why": "A redirect target comes from request data.",
       "patch": "Allowlist relative paths or known hosts; never redirect to arbitrary input.",
       "checker_risk": "low",
-      "language": "python"
+      "language": "python",
+      "kind_ru": "Открытый редирект",
+      "patch_ru": "Разрешать относительные пути или известные хосты; на произвольный ввод не редиректить."
     },
     {
       "id": "dddd9dc1cd",
@@ -1701,37 +1999,16 @@
       "why": "A flag-shaped literal or storage path is present in source.",
       "patch": "Locate where the checker writes it. Read it through the intended API, not the disk.",
       "checker_risk": "low",
-      "language": "python"
-    },
-    {
-      "id": "af8b240a9e",
-      "rule": "checker-ref",
-      "kind": "Checker reference",
-      "severity": "info",
-      "file": "/srv/notes/app.py",
-      "line": 28,
-      "snippet": "# The checker pushes flags through /_checker/notes/<flag_id>. Read only.",
-      "context": [
-        "    return g.db",
-        "",
-        "",
-        "# The checker pushes flags through /_checker/notes/<flag_id>. Read only.",
-        "@app.get(\"/notes/<int:note_id>\")",
-        "def note(note_id: int):",
-        "    row = db().execute("
-      ],
-      "context_start": 25,
-      "why": "The code mentions the checker protocol. These paths are not attack targets.",
-      "patch": "Do not send requests to /_checker/*. Do not modify checker state. Read only.",
-      "checker_risk": "high",
-      "language": "python"
+      "language": "python",
+      "kind_ru": "Флаг в исходнике",
+      "patch_ru": "Найти, куда чекер пишет флаг. Забирать через предусмотренную ручку, а не с диска."
     }
   ],
   "counts": {
     "high": 41,
     "medium": 8,
     "low": 1,
-    "info": 2
+    "info": 1
   },
   "languages": [
     {
@@ -1874,31 +2151,7 @@
     }
   ],
   "checker": {
-    "refs": [
-      {
-        "id": "af8b240a9e",
-        "rule": "checker-ref",
-        "kind": "Checker reference",
-        "severity": "info",
-        "file": "/srv/notes/app.py",
-        "line": 28,
-        "snippet": "# The checker pushes flags through /_checker/notes/<flag_id>. Read only.",
-        "context": [
-          "    return g.db",
-          "",
-          "",
-          "# The checker pushes flags through /_checker/notes/<flag_id>. Read only.",
-          "@app.get(\"/notes/<int:note_id>\")",
-          "def note(note_id: int):",
-          "    row = db().execute("
-        ],
-        "context_start": 25,
-        "why": "The code mentions the checker protocol. These paths are not attack targets.",
-        "patch": "Do not send requests to /_checker/*. Do not modify checker state. Read only.",
-        "checker_risk": "high",
-        "language": "python"
-      }
-    ],
+    "refs": [],
     "mentions": [
       "/_checker/notes/"
     ],
@@ -1922,7 +2175,7 @@
       "fixture",
       "no ssh"
     ],
-    "findings_total": 52,
+    "findings_total": 51,
     "demo": true
   },
   "os": [

@@ -10,7 +10,7 @@ import shlex
 import time
 from pathlib import Path
 
-from . import patterns
+from . import patterns, ru
 from .languages import detect_stacks, stack_for
 from .ssh import BaseSSH
 
@@ -371,6 +371,11 @@ def analyze_sources(sources: dict[str, str], services: list[dict], host: str) ->
         enriched_services.append(item)
 
     findings.sort(key=lambda item: (patterns.SEVERITY_ORDER.get(item["severity"], 9), item["file"], item["line"]))
+    for item in findings:
+        if not item.get("kind_ru"):
+            item["kind_ru"] = ru.kind_ru(item.get("kind", ""))
+        if not item.get("patch_ru"):
+            item["patch_ru"] = ru.patch_ru(item.get("rule", ""), item.get("patch", ""))
     counts = {severity: sum(1 for item in findings if item["severity"] == severity)
               for severity in ("high", "medium", "low", "info")}
 

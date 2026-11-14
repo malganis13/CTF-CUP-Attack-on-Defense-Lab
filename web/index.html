@@ -51,9 +51,9 @@
       </button>
 
       <div class="nav-group">Справка</div>
-      <button data-tab="rules" title="Правила (8)">
+      <button data-tab="rules" title="Правила сканера (8)">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16M4 12h16M4 19h10"/></svg>
-        <span class="label">Правила</span>
+        <span class="label">Правила сканера</span>
       </button>
       <button data-tab="knowledge" title="База знаний (9)">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5a2 2 0 012-2h13v18H6a2 2 0 01-2-2z"/><path d="M8 7h8M8 11h8"/></svg>
@@ -65,6 +65,11 @@
       <div class="meter" title="Сколько запросов проба может отправить за минуту">
         <div class="row"><span>бюджет запросов</span><b id="budget-text">—</b></div>
         <div class="track"><div class="fill" id="budget-fill"></div></div>
+      </div>
+      <div class="round" id="round-box" title="Таймер раунда: предупреждает, когда патчить уже поздно">
+        <div class="row"><span>раунд</span><b id="round-left">—</b></div>
+        <div class="track"><div class="fill" id="round-fill"></div></div>
+        <button id="btn-round" class="ghost small">старт раунда</button>
       </div>
       <div class="side-hint">
         <kbd>/</kbd> поиск · <kbd>1–9</kbd> разделы<br>
@@ -123,6 +128,24 @@
             <span class="status" id="connect-status"></span>
           </div>
           <pre class="log" id="connect-log" hidden style="margin-top:14px"></pre>
+        </div>
+
+        <div class="card" id="preflight-card">
+          <div class="row">
+            <div class="grow">
+              <h2>Проверка перед игрой</h2>
+              <p class="lead" style="margin:0">Часы, диск, упавшие юниты, чекер, ключ, бюджет. Один прогон — до первого раунда, не во время.</p>
+            </div>
+            <button id="btn-preflight" class="primary">Проверить всё</button>
+            <span class="status" id="preflight-verdict"></span>
+          </div>
+          <div class="table-wrap" id="preflight-wrap" hidden style="margin-top:14px">
+            <table id="preflight-table">
+              <thead><tr><th>проверка</th><th>состояние</th><th>значение</th><th>что делать</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="lead" id="preflight-empty" style="margin:14px 0 0">Ещё не запускалась. На полигоне занимает около секунды.</p>
         </div>
 
         <div class="card">
@@ -210,14 +233,35 @@
             <span class="status" id="svc-live-summary"></span>
           </div>
           <div class="table-wrap"><table id="services-table">
-            <thead><tr><th>порт</th><th>прото</th><th>сервис</th><th>живость</th><th>стек</th><th>pid</th><th>каталог</th><th>команда</th></tr></thead>
-            <tbody><tr><td colspan="8" class="empty">запустите аудит</td></tr></tbody>
+            <thead><tr><th>порт</th><th>прото</th><th>сервис</th><th>живость</th><th>стек</th><th>pid</th><th>каталог</th><th>команда</th><th></th></tr></thead>
+            <tbody><tr><td colspan="9" class="empty">запустите аудит</td></tr></tbody>
           </table></div>
+          <div class="drawer" id="log-drawer" hidden>
+            <div class="row">
+              <b id="log-title">журнал</b>
+              <input id="log-unit" placeholder="юнит: ad-notes.service" spellcheck="false" style="max-width:280px">
+              <span class="status" id="log-status"></span>
+              <div class="grow"></div>
+              <button id="log-refresh" class="ghost small">обновить</button>
+              <button id="log-close" class="ghost small">закрыть</button>
+            </div>
+            <pre class="log" id="log-text"></pre>
+          </div>
         </div>
       </section>
 
       <!-- НАХОДКИ -->
       <section class="panel" id="panel-findings">
+        <div class="card" id="compare-card" hidden style="margin-bottom:14px">
+          <div class="row">
+            <div class="grow">
+              <h2 style="margin:0">С прошлого аудита</h2>
+              <p class="lead" id="compare-lead" style="margin:2px 0 0"></p>
+            </div>
+            <button id="btn-compare" class="ghost small">сравнить</button>
+          </div>
+          <div id="compare-body" class="compare"></div>
+        </div>
         <div class="filters">
           <input id="f-search" placeholder="Поиск: файл, правило, текст…  ( / )">
           <div class="sev-chips" id="sev-chips">
@@ -321,6 +365,19 @@
           </div>
           <pre class="code" id="g-output"><div class="empty">ничего не сгенерировано</div></pre>
         </div>
+
+        <div class="card" id="drill-card">
+          <div class="row">
+            <div class="grow">
+              <h2>Тренировка перед игрой</h2>
+              <p class="lead" style="margin:0">Восемь эксплойтов, которые надо уметь руками. Один клик — один GET на полигон и проверка маркера.</p>
+            </div>
+            <button id="btn-drill-refresh" class="ghost small">обновить список</button>
+            <span class="status" id="drill-status"></span>
+          </div>
+          <div id="drill-list" class="drills"><div class="empty">проверка загружается…</div></div>
+          <div id="drill-result" class="drill-result" hidden></div>
+        </div>
       </section>
 
       <!-- ОТЧЁТ -->
@@ -376,14 +433,20 @@
         <div class="card">
           <div class="row" style="margin-bottom:14px">
             <div class="grow">
-              <h2>Правила</h2>
-              <p class="lead" style="margin:0">Эвристики, не доказательства. Языковые правила запускаются только на файлах своего языка.</p>
+              <h2>Правила сканера</h2>
+              <p class="lead" style="margin:0">Что находит аудит: класс, чем опасно, как чинить и какой код подставить. Это справка по проверкам, а не турнирный регламент.</p>
             </div>
-            <input id="rules-search" placeholder="фильтр по классу или языку" style="max-width:280px">
+            <input id="rules-search" placeholder="фильтр: класс, язык, id" style="max-width:280px">
+          </div>
+          <div class="rules-help">
+            <b>Как читать.</b> «Чем опасно» — почему строка является дырой. «Как чинить» — минимальная правка, которая
+            закрывает дыру и не ломает чекер. «Лечение» — готовое семейство с кодом до/после: кнопка «код» раскрывает
+            его прямо в строке. Турнирные правила A/D, SLA и порядок патчей — во вкладке
+            <a href="#" id="rules-to-kb">«База знаний»</a>.
           </div>
           <div class="table-wrap"><table id="rules-table">
-            <thead><tr><th>id</th><th>класс</th><th>важность</th><th>языки</th><th>что значит</th><th>как чинить</th></tr></thead>
-            <tbody><tr><td colspan="6" class="empty">загрузка</td></tr></tbody>
+            <thead><tr><th>id</th><th>класс</th><th>важность</th><th>языки</th><th>чем опасно</th><th>как чинить</th><th>лечение</th></tr></thead>
+            <tbody><tr><td colspan="7" class="empty">загрузка</td></tr></tbody>
           </table></div>
         </div>
 
@@ -399,6 +462,14 @@
 
       <!-- БАЗА ЗНАНИЙ -->
       <section class="panel" id="panel-knowledge">
+        <div class="card" style="margin-bottom:14px">
+          <div class="row">
+            <div class="grow">
+              <h2 style="margin:0">База знаний</h2>
+              <p class="lead" style="margin:2px 0 0">Турнирный регламент A/D, SLA на патч, порядок разбора инцидента, оценка и тренажёр. Каталог проверок сканера — во вкладке <a href="#" id="kb-to-rules">«Правила сканера»</a>.</p>
+            </div>
+          </div>
+        </div>
         <div class="split files">
           <div class="list" id="knowledge-list"></div>
           <div class="detail"><div class="kb" id="knowledge-view">выберите заметку</div></div>

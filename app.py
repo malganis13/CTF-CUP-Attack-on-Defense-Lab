@@ -22,7 +22,7 @@ from urllib.parse import parse_qs, urlparse
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from adkit import __version__, fixes, liveness, patterns, probe
+from adkit import __version__, drill, fixes, liveness, patterns, preflight, probe, ru
 from adkit.audit import Audit, analyze_sources
 from adkit.generate import generate_probe, generate_report, pick_endpoint
 from adkit.ratelimit import BUDGET
@@ -70,6 +70,8 @@ SESSION: dict = {
     "password": None,
     "last_audit": None,
     "demo": False,
+    "history": [],
+    "preflight": None,
 }
 JOBS: dict[str, dict] = {}
 SHUTDOWN = threading.Event()
@@ -125,6 +127,7 @@ def start_job(kind: str, function) -> str:
             JOBS[job_id]["result"] = result
             if kind == "audit" and isinstance(result, dict):
                 SESSION["last_audit"] = result
+                remember_audit(result)
             JOBS[job_id]["status"] = "done"
         except Exception as exc:  # noqa: BLE001 - surfaced to the UI
             JOBS[job_id]["error"] = f"{type(exc).__name__}: {exc}"
@@ -132,6 +135,55 @@ def start_job(kind: str, function) -> str:
 
     threading.Thread(target=worker, daemon=True).start()
     return job_id
+
+
+MAX_HISTORY = 8
+
+
+def remember_audit(audit: dict) -> None:
+    """Кладёт аудит в короткую историю: по ней видно, что закрыл патч."""
+    history = SESSION.setdefault("history", [])
+    entry = {
+        "id": secrets.token_hex(4),
+        "at": audit.get("meta", {}).get("finished_at") or time.time(),
+        "findings": {item.get("id"): item for item in audit.get("findings") or [] if item.get("id")},
+        "count": len(audit.get("findings") or []),
+    }
+    history.append(entry)
+    del history[:-MAX_HISTORY]
+
+
+def compare_audits(before_id: str, after_id: str) -> dict:
+    history = SESSION.get("history") or []
+    by_id = {entry["id"]: entry for entry in history}
+    before = by_id.get(before_id)
+    after = by_id.get(after_id)
+    if not before or not after:
+        return {"available": False, "reason": "снимок не найден: история хранит последние аудиты"}
+    old, new = before["findings"], after["findings"]
+
+    def brief(item: dict) -> dict:
+        return {
+            "id": item.get("id"),
+            "rule": item.get("rule"),
+            "kind": item.get("kind"),
+            "severity": item.get("severity"),
+            "file": item.get("file"),
+            "line": item.get("line"),
+        }
+
+    appeared = [brief(new[key]) for key in new.keys() - old.keys()]
+    closed = [brief(old[key]) for key in old.keys() - new.keys()]
+    appeared.sort(key=lambda item: (item["file"] or "", item["line"] or 0))
+    closed.sort(key=lambda item: (item["file"] or "", item["line"] or 0))
+    return {
+        "available": True,
+        "before": {"id": before["id"], "count": before["count"], "at": before["at"]},
+        "after": {"id": after["id"], "count": after["count"], "at": after["at"]},
+        "appeared": appeared,
+        "closed": closed,
+        "persisting": len(new.keys() & old.keys()),
+    }
 
 
 def demo_audit() -> dict:
@@ -228,7 +280,33 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/state":
                 self.send_json(200, public_state())
             elif path == "/api/patterns":
-                self.send_json(200, {"rules": patterns.rule_catalog(), "coverage": patterns.coverage_matrix()})
+                catalog = []
+                for rule in patterns.rule_catalog():
+                    key = fixes.RULE_TO_FIX.get(rule.get("id", ""))
+                    family = None
+                    if key and key in fixes.FIXES:
+                        fix = fixes.FIXES[key]
+                        family = {"key": fix.key, "title": fix.title, "risk": fix.risk}
+                    catalog.append(ru.enrich_rule(rule, family))
+                self.send_json(200, {
+                    "rules": catalog,
+                    "coverage": patterns.coverage_matrix(),
+                    "untranslated": ru.missing(),
+                })
+            elif path == "/api/drill":
+                self.send_json(200, {
+                    "drills": drill.catalog(),
+                    "bases": drill.bases(SESSION["config"].get("target", {})),
+                    "budget": probe.BUDGET.peek(),
+                })
+            elif path == "/api/rulefix":
+                rule_id = (query.get("rule", [""])[0] or "").strip()
+                if not any(item.get("id") == rule_id for item in patterns.rule_catalog()):
+                    self.send_json(404, {"error": "правило не найдено"})
+                    return
+                language = query.get("language", ["any"])[0] or "any"
+                fix = fixes.build_fix(rule_id, language, "")
+                self.send_json(200, {"rule": rule_id, "fix": fix})
             elif path == "/api/knowledge":
                 items = []
                 for file in sorted(KNOWLEDGE.glob("*.md")) if KNOWLEDGE.is_dir() else []:
@@ -272,6 +350,31 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, result)
             elif path == "/api/demo":
                 self.send_json(200, demo_audit())
+            elif path == "/api/logs":
+                unit = (query.get("unit", [""])[0] or "").strip()
+                lines = query.get("lines", ["120"])[0]
+                if SESSION["demo"]:
+                    self.send_json(200, {"unit": unit, "lines": 0, "exit": 0,
+                                         "text": "демо-режим: журнала нет", "empty": True})
+                    return
+                try:
+                    ssh = connect(SESSION["config"].get("target", {}), SESSION.get("password"))
+                    try:
+                        self.send_json(200, preflight.tail(ssh, unit, int(lines)))
+                    finally:
+                        ssh.close()
+                except ValueError as error:
+                    self.send_json(400, {"error": str(error)})
+                except SSHError as error:
+                    self.send_json(502, {"error": str(error)})
+            elif path == "/api/compare":
+                history = SESSION.get("history") or []
+                if len(history) < 2:
+                    self.send_json(200, {"available": False, "reason": "нужны два аудита"})
+                    return
+                before = (query.get("before", [""])[0] or "").strip() or history[-2]["id"]
+                after = (query.get("after", [""])[0] or "").strip() or history[-1]["id"]
+                self.send_json(200, compare_audits(before, after))
             elif path == "/api/last":
                 audit = SESSION.get("last_audit")
                 if audit is None:
@@ -308,6 +411,53 @@ class Handler(BaseHTTPRequestHandler):
                 finally:
                     ssh.close()
                 self.send_json(200, {"ok": True, "output": output, "backend": backend_name()})
+            elif path == "/api/drill/run":
+                drill_id = (body.get("id") or "").strip()
+                if SESSION["demo"]:
+                    self.send_json(400, {"error": "демо-режим: полигона нет, упражнение не отправить"})
+                    return
+                base = (body.get("base") or "").strip()
+                if not base:
+                    entry = drill.by_id(drill_id)
+                    host = (SESSION["config"].get("target", {}).get("host") or "").strip()
+                    if not host:
+                        self.send_json(400, {"error": "цель не задана: укажите хост во вкладке «Подключение»"})
+                        return
+                    base = f"http://{host}:{entry['port']}"
+                try:
+                    self.send_json(200, drill.run(drill_id, base))
+                except drill.DrillError as error:
+                    self.send_json(400, {"error": str(error)})
+            elif path == "/api/preflight":
+                target = SESSION["config"].get("target", {})
+                services = (SESSION.get("last_audit") or {}).get("services") or []
+                ssh = None
+                try:
+                    if SESSION["demo"]:
+                        result = preflight.check(None, target, services)
+                    else:
+                        try:
+                            ssh = connect(target, SESSION.get("password"))
+                        except SSHError as error:
+                            ssh = None
+                            result = preflight.check(None, target, services)
+                            result["rows"].append({
+                                "id": "connect", "title": "Подключение", "status": "fail",
+                                "value": str(error)[:160],
+                                "hint": "адрес, порт, ключ или пользователь — вкладка «Подключение»",
+                            })
+                        if ssh is not None:
+                            result = preflight.check(ssh, target, services)
+                finally:
+                    if ssh is not None:
+                        ssh.close()
+                summary = {"ok": 0, "warn": 0, "fail": 0}
+                for row in result["rows"]:
+                    summary[row["status"]] = summary.get(row["status"], 0) + 1
+                result["summary"] = summary
+                result["verdict"] = "fail" if summary["fail"] else ("warn" if summary["warn"] else "ok")
+                SESSION["preflight"] = result
+                self.send_json(200, result)
             elif path == "/api/audit":
                 if SESSION["demo"]:
                     self.send_json(200, {"job": start_job("audit", lambda log: demo_audit())})
@@ -454,6 +604,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(404, {"error": "находка не найдена — перезапустите аудит"})
             return
         fix = fixes.build_fix(finding.get("rule", ""), finding.get("language", "any"), finding.get("snippet", ""))
+        fix["commands"] = fix_commands(finding, audit.get("services") or [])
         self.send_json(200, {
             "finding": {
                 "id": finding.get("id"),
@@ -464,6 +615,41 @@ class Handler(BaseHTTPRequestHandler):
             },
             "fix": fix,
         })
+
+
+def fix_commands(finding: dict, services: list[dict]) -> list[dict]:
+    """Команды для рук: бэкап, правка, рестарт, проверка.
+
+    Инструмент ничего из этого не выполняет — он печатает строки, которые
+    человек вставляет в свой терминал. Запись на цель остаётся за человеком.
+    """
+    file = (finding.get("file") or "").strip()
+    if not file.startswith("/"):
+        return []
+    service = None
+    for item in services:
+        cwd = (item.get("cwd") or "").rstrip("/")
+        if cwd and file.startswith(cwd + "/"):
+            if service is None or len(cwd) > len((service.get("cwd") or "").rstrip("/")):
+                service = item
+    unit = ""
+    if service:
+        name = (service.get("service") or "").strip().rstrip(":")
+        if name:
+            unit = f"{name}.service"
+    stamp = "$(date +%Y%m%d-%H%M%S)"
+    rows = [
+        {"title": "бэкап до правки", "code": f"cp -a {file} {file}.bak-{stamp}"},
+        {"title": "что именно меняется", "code": f"diff -u {file}.bak-* {file} | head -80"},
+    ]
+    if unit:
+        rows.append({"title": "рестарт сервиса", "code": f"systemctl restart {unit} && systemctl is-active {unit}"})
+        rows.append({"title": "журнал после рестарта", "code": f"journalctl -u {unit} -n 40 --no-pager"})
+    else:
+        rows.append({"title": "рестарт сервиса", "code": "# найдите юнит: systemctl list-units --type=service | grep -i <имя>"})
+    rows.append({"title": "откат, если раунд покраснел", "code": f"cp -a {file}.bak-* {file} && systemctl restart ${{unit:-<unit>}}"})
+    rows.append({"title": "проверка после правки", "code": f"curl -sS -o /dev/null -w '%{{http_code}} %{{time_total}}s\\n' http://127.0.0.1:<порт>/health"})
+    return rows
 
 
 def traffic_profile() -> dict:

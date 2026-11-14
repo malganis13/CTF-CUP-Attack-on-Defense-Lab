@@ -13,8 +13,8 @@ const TITLES = {
   generator: ["Генератор", "проба и заготовка"],
   report: ["Отчёт", "markdown для команды"],
   traffic: ["Трафик", "доказательство: не флуд"],
-  rules: ["Правила", "что именно ищет сканер"],
-  knowledge: ["База знаний", "регламент, патчи, оценка"],
+  rules: ["Правила сканера", "что находит аудит и как это закрыть"],
+  knowledge: ["База знаний", "регламент A/D, патчи, оценка, тренажёр"],
 };
 
 const ORDER = ["connect", "audit", "services", "findings", "files", "generator", "report", "traffic", "rules", "knowledge"];
@@ -45,6 +45,9 @@ const state = {
   filter: { q: "", sev: "", kind: "" },
   svcFilter: "",
   liveness: null,
+  preflight: null,
+  compare: null,
+  logUnit: "",
   rulesFilter: "",
   activeFinding: null,
   activeFile: null,
@@ -384,6 +387,8 @@ function ingest(audit) {
   if ((audit.services || []).length && !state.liveness) {
     checkLiveness(false).catch(() => {});
   }
+  state.auditsDone = (state.auditsDone || 0) + 1;
+  if (state.auditsDone >= 2) runCompare();
 }
 
 function renderSummary() {
@@ -490,7 +495,7 @@ function renderServices() {
   if (!services.length) {
     const row = el("tr");
     const cell = el("td", "empty", state.audit ? "нет совпадений" : "запустите аудит");
-    cell.colSpan = 8;
+    cell.colSpan = 9;
     row.appendChild(cell);
     body.appendChild(row);
     return;
@@ -529,6 +534,17 @@ function renderServices() {
     cmd.style.textOverflow = "ellipsis";
     cmd.style.whiteSpace = "nowrap";
     row.appendChild(cmd);
+    const logCell = el("td");
+    const logButton = el("button", "ghost small", "логи");
+    logButton.title = "journalctl по юниту сервиса";
+    logButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const name = (service.service || "").replace(/:$/, "");
+      $("#log-unit").value = name ? `${name}.service` : "";
+      openLog($("#log-unit").value);
+    });
+    logCell.appendChild(logButton);
+    row.appendChild(logCell);
     if (service.cwd) {
       row.title = "открыть каталог";
       row.addEventListener("click", () => {
@@ -549,6 +565,196 @@ $("#svc-search").addEventListener("input", (event) => {
 
 $("#btn-live").addEventListener("click", () => checkLiveness(true));
 
+/* ---------- журнал юнита ---------- */
+
+async function openLog(unit) {
+  const drawer = $("#log-drawer");
+  drawer.hidden = false;
+  if (unit) $("#log-unit").value = unit;
+  await refreshLog();
+}
+
+async function refreshLog() {
+  const unit = ($("#log-unit").value || "").trim();
+  const status = $("#log-status");
+  const text = $("#log-text");
+  if (!unit) {
+    setStatus(status, "укажите юнит", "bad");
+    return;
+  }
+  setStatus(status, "читаю…");
+  try {
+    const answer = await api(`/api/logs?unit=${encodeURIComponent(unit)}&lines=120`);
+    $("#log-title").textContent = unit;
+    text.textContent = answer.text || "пусто";
+    text.scrollTop = text.scrollHeight;
+    setStatus(status, answer.empty ? "журнал пуст" : `${answer.lines} строк`, answer.empty ? "bad" : "ok");
+  } catch (error) {
+    setStatus(status, error.message, "bad");
+    text.textContent = "";
+  }
+}
+
+$("#log-refresh").addEventListener("click", refreshLog);
+$("#log-close").addEventListener("click", () => { $("#log-drawer").hidden = true; });
+$("#log-unit").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") refreshLog();
+});
+
+/* ---------- проверка перед игрой ---------- */
+
+const PREFLIGHT_LABEL = { ok: "ок", warn: "внимание", fail: "стоп" };
+
+function renderPreflight() {
+  const result = state.preflight;
+  const wrap = $("#preflight-wrap");
+  const empty = $("#preflight-empty");
+  const verdict = $("#preflight-verdict");
+  if (!result) return;
+  const body = $("#preflight-table tbody");
+  body.textContent = "";
+  (result.rows || []).forEach((row) => {
+    const tr = el("tr");
+    tr.appendChild(el("td", "cell-mono", row.title));
+    const stateCell = el("td");
+    stateCell.appendChild(el("span", `pf-chip ${row.status}`, PREFLIGHT_LABEL[row.status] || row.status));
+    tr.appendChild(stateCell);
+    tr.appendChild(el("td", "cell-mono", row.value || "—"));
+    tr.appendChild(el("td", "pf-hint", row.hint || "—"));
+    body.appendChild(tr);
+  });
+  wrap.hidden = false;
+  empty.hidden = true;
+  const summary = result.summary || {};
+  const parts = [];
+  if (summary.ok) parts.push(`ок ${summary.ok}`);
+  if (summary.warn) parts.push(`внимание ${summary.warn}`);
+  if (summary.fail) parts.push(`стоп ${summary.fail}`);
+  setStatus(verdict, parts.join(" · "), summary.fail ? "bad" : summary.warn ? "warn" : "ok");
+}
+
+async function runPreflight() {
+  const button = $("#btn-preflight");
+  button.disabled = true;
+  button.textContent = "проверяю…";
+  try {
+    state.preflight = await api("/api/preflight", { method: "POST", body: "{}" });
+    renderPreflight();
+    const summary = state.preflight.summary || {};
+    if (summary.fail) toast(`проверка: ${summary.fail} стоп-пунктов`, "bad");
+    else if (summary.warn) toast(`проверка: ${summary.warn} замечаний`, "warn");
+    else toast("проверка чистая: можно играть", "ok");
+  } catch (error) {
+    toast("проверка не прошла: " + error.message, "bad");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Проверить всё";
+  }
+}
+
+$("#btn-preflight").addEventListener("click", runPreflight);
+
+/* ---------- что изменилось после патча ---------- */
+
+function renderCompare() {
+  const card = $("#compare-card");
+  const body = $("#compare-body");
+  const data = state.compare;
+  if (!data) return;
+  card.hidden = false;
+  body.textContent = "";
+  if (!data.available) {
+    $("#compare-lead").textContent = data.reason || "нет данных";
+    return;
+  }
+  $("#compare-lead").textContent =
+    `${data.before.count} → ${data.after.count} находок · закрылось ${data.closed.length}, появилось ${data.appeared.length}`;
+
+  const column = (title, rows, kind) => {
+    const box = el("div", "cmp-col");
+    box.appendChild(el("b", "cmp-head", `${title} (${rows.length})`));
+    if (!rows.length) {
+      box.appendChild(el("div", "empty", "—"));
+      return box;
+    }
+    rows.forEach((row) => {
+      const line = el("div", `cmp-row ${kind}`);
+      line.appendChild(el("span", "pill", row.rule));
+      line.appendChild(el("span", "cmp-file", `${(row.file || "").split("/").pop()}:${row.line}`));
+      line.title = row.file;
+      box.appendChild(line);
+    });
+    return box;
+  };
+  body.appendChild(column("закрылось", data.closed, "good"));
+  body.appendChild(column("появилось", data.appeared, "bad"));
+}
+
+async function runCompare() {
+  try {
+    state.compare = await api("/api/compare");
+    renderCompare();
+    if (!state.compare.available) toast(state.compare.reason || "нужны два аудита", "warn");
+  } catch (error) {
+    toast("сравнение: " + error.message, "bad");
+  }
+}
+
+$("#btn-compare").addEventListener("click", runCompare);
+
+/* ---------- таймер раунда ---------- */
+
+const ROUND_KEY = "ad-audit.round";
+
+function roundState() {
+  try {
+    return JSON.parse(localStorage.getItem(ROUND_KEY) || "null");
+  } catch (_) {
+    return null;
+  }
+}
+
+function tickRound() {
+  const info = roundState();
+  const left = $("#round-left");
+  const fill = $("#round-fill");
+  const box = $("#round-box");
+  if (!info || !info.period) {
+    left.textContent = "—";
+    fill.style.width = "0%";
+    box.classList.remove("low", "over");
+    return;
+  }
+  const now = Date.now();
+  const passed = (now - info.startedAt) % info.period;
+  const remain = info.period - passed;
+  const seconds = Math.ceil(remain / 1000);
+  left.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  fill.style.width = `${Math.round((remain / info.period) * 100)}%`;
+  box.classList.toggle("low", seconds <= 10);
+  box.classList.toggle("over", seconds <= 3);
+}
+
+$("#btn-round").addEventListener("click", () => {
+  const current = roundState();
+  if (current && current.period) {
+    localStorage.removeItem(ROUND_KEY);
+    $("#btn-round").textContent = "старт раунда";
+    toast("таймер раунда снят", "warn");
+  } else {
+    const raw = window.prompt("Длительность раунда, секунд", "60");
+    const period = Math.max(15, Math.min(3600, Number(raw) || 60)) * 1000;
+    localStorage.setItem(ROUND_KEY, JSON.stringify({ period, startedAt: Date.now() }));
+    $("#btn-round").textContent = "снять таймер";
+    toast(`раунд ${period / 1000} с: патч до последних 10 секунд`, "ok");
+  }
+  tickRound();
+});
+
+setInterval(tickRound, 250);
+tickRound();
+if (roundState() && roundState().period) $("#btn-round").textContent = "снять таймер";
+
 /* ---------- находки ---------- */
 
 function renderKindFilter() {
@@ -557,7 +763,9 @@ function renderKindFilter() {
   select.textContent = "";
   select.appendChild(new Option("все классы", ""));
   const kinds = Array.from(new Set(state.findings.map((item) => item.kind))).sort();
-  kinds.forEach((kind) => select.appendChild(new Option(kind, kind)));
+  const labels = {};
+  state.findings.forEach((item) => { labels[item.kind] = item.kind_ru || item.kind; });
+  kinds.forEach((kind) => select.appendChild(new Option(labels[kind] || kind, kind)));
   select.value = kinds.includes(current) ? current : "";
   state.filter.kind = select.value;
 }
@@ -573,7 +781,7 @@ function visibleFindings() {
     if (sev && item.severity !== sev) return false;
     if (kind && item.kind !== kind) return false;
     if (!needle) return true;
-    return `${item.kind} ${item.file} ${item.snippet} ${item.rule} ${item.language}`.toLowerCase().includes(needle);
+    return `${item.kind} ${item.kind_ru || ""} ${item.file} ${item.snippet} ${item.rule} ${item.language}`.toLowerCase().includes(needle);
   });
 }
 
@@ -592,7 +800,7 @@ function renderFindings() {
     if (state.activeFinding && state.activeFinding.id === finding.id) item.classList.add("active");
     item.appendChild(el("span", "pill " + finding.severity, finding.severity));
     const body = el("div", "body");
-    body.appendChild(el("b", null, finding.kind));
+    body.appendChild(el("b", null, finding.kind_ru || finding.kind));
     body.appendChild(el("small", null, `${finding.file}:${finding.line}`));
     item.appendChild(body);
     item.addEventListener("click", () => selectFinding(finding));
@@ -659,7 +867,7 @@ function renderFindingDetail(finding) {
   detail.textContent = "";
 
   const head = el("div", "head");
-  head.appendChild(el("h3", null, finding.kind));
+  head.appendChild(el("h3", null, finding.kind_ru || finding.kind));
   head.appendChild(el("div", "loc", `${finding.file}:${finding.line} · правило ${finding.rule} · ${finding.language || "text"}`));
   const chips = el("div", "row tight");
   chips.appendChild(el("span", "pill " + finding.severity, finding.severity));
@@ -795,7 +1003,7 @@ async function readFile(path) {
       row.appendChild(el("span", "ln", number));
       row.appendChild(el("span", "src", lines[index]));
       if (hit) {
-        row.title = `${hit.severity}: ${hit.kind}`;
+        row.title = `${hit.severity}: ${hit.kind_ru || hit.kind}`;
         row.addEventListener("click", () => {
           selectFinding(hit);
           showTab("findings");
@@ -849,7 +1057,7 @@ function endpointFor(finding) {
 
 function setGeneratorFinding(finding) {
   state.activeFinding = finding;
-  $("#g-finding").value = `${finding.kind} @ ${finding.file}:${finding.line}`;
+  $("#g-finding").value = `${finding.kind_ru || finding.kind} @ ${finding.file}:${finding.line}`;
   const service = serviceFromPath(finding.file);
   const port = servicePort(service, finding.file);
   $("#g-service").value = service;
@@ -1147,32 +1355,97 @@ function renderRules() {
   const needle = state.rulesFilter.trim().toLowerCase();
   const rules = rulesCache.filter((rule) => {
     if (!needle) return true;
-    return `${rule.id} ${rule.kind} ${(rule.languages || []).join(" ")}`.toLowerCase().includes(needle);
+    return `${rule.id} ${rule.kind} ${rule.kind_ru || ""} ${(rule.languages || []).join(" ")}`
+      .toLowerCase().includes(needle);
   });
   rules.forEach((rule) => {
     const row = el("tr");
     row.appendChild(el("td", "cell-mono", rule.id));
-    row.appendChild(el("td", null, rule.kind));
+    row.appendChild(el("td", null, rule.kind_ru || rule.kind));
     const sev = el("td");
     sev.appendChild(el("span", "pill " + rule.severity, rule.severity));
     row.appendChild(sev);
     row.appendChild(el("td", "cell-mono", (rule.languages || ["any"]).join(", ")));
-    row.appendChild(el("td", null, rule.why));
-    row.appendChild(el("td", null, rule.patch));
+
+    const why = el("td", "rule-why", rule.why_ru || rule.why);
+    row.appendChild(why);
+
+    const fix = el("td", "rule-fix");
+    fix.appendChild(el("span", null, rule.patch_ru || rule.patch));
+    if (rule.fix_hint) fix.appendChild(el("span", "rule-hint", rule.fix_hint));
+    row.appendChild(fix);
+
+    const treat = el("td");
+    if (rule.fix && rule.fix.title) {
+      treat.appendChild(el("div", "rule-family", rule.fix.title));
+      const risk = el("div", `rule-family risk-${rule.fix.risk || "low"}`,
+        `риск для раунда: ${rule.fix.risk === "high" ? "высокий" : rule.fix.risk === "medium" ? "средний" : "низкий"}`);
+      treat.appendChild(risk);
+      const codeButton = el("button", "ghost small", "код");
+      codeButton.addEventListener("click", () => toggleRuleCode(row, rule, codeButton));
+      treat.appendChild(codeButton);
+    } else {
+      treat.appendChild(el("span", "rule-family", "вручную"));
+    }
+    row.appendChild(treat);
     body.appendChild(row);
   });
   if (!rules.length) {
     const row = el("tr");
     const cell = el("td", "empty", "нет совпадений");
-    cell.colSpan = 6;
+    cell.colSpan = 7;
     row.appendChild(cell);
     body.appendChild(row);
+  }
+}
+
+async function toggleRuleCode(row, rule, button) {
+  const next = row.nextElementSibling;
+  if (next && next.classList.contains("rule-code-row")) {
+    next.remove();
+    button.textContent = "код";
+    return;
+  }
+  button.disabled = true;
+  try {
+    const answer = await api(`/api/rulefix?rule=${encodeURIComponent(rule.id)}`);
+    const fix = answer.fix || {};
+    const cell = el("td");
+    cell.colSpan = 7;
+    if (!fix.available) {
+      cell.appendChild(el("div", "rule-family", (fix.steps || []).join(" · ") || "готового семейства нет"));
+    } else {
+      const pre = el("pre", "rule-code");
+      (fix.before || []).forEach((line) => pre.appendChild(el("div", "minus", `- ${line}`)));
+      (fix.after || []).forEach((line) => pre.appendChild(el("div", "plus", `+ ${line}`)));
+      cell.appendChild(pre);
+      const meta = el("div", "rule-family", `${fix.title} · ${fix.language_label || fix.language || ""} · ${fix.breaks || ""}`);
+      cell.appendChild(meta);
+    }
+    const codeRow = el("tr", "rule-code-row");
+    codeRow.appendChild(cell);
+    row.after(codeRow);
+    button.textContent = "скрыть";
+  } catch (error) {
+    toast("код лечения: " + error.message, "bad");
+  } finally {
+    button.disabled = false;
   }
 }
 
 $("#rules-search").addEventListener("input", (event) => {
   state.rulesFilter = event.target.value;
   renderRules();
+});
+
+$("#rules-to-kb").addEventListener("click", (event) => {
+  event.preventDefault();
+  showTab("knowledge");
+});
+
+$("#kb-to-rules").addEventListener("click", (event) => {
+  event.preventDefault();
+  showTab("rules");
 });
 
 async function loadRules() {
@@ -1272,6 +1545,123 @@ $("#btn-stop").addEventListener("click", async () => {
   }
 });
 
+
+/* ---------- тренажёр: восемь эксплойтов ---------- */
+
+const drillState = { items: [], bases: {}, results: {} };
+
+function renderDrills() {
+  const box = $("#drill-list");
+  box.textContent = "";
+  if (!drillState.items.length) {
+    box.appendChild(el("div", "empty", "список не загружен"));
+    return;
+  }
+  drillState.items.forEach((item, index) => {
+    const row = el("div", "drill");
+    const head = el("div", "drill-head");
+    head.appendChild(el("span", "drill-num", String(index + 1)));
+    const titles = el("div", "drill-titles");
+    titles.appendChild(el("b", null, item.title));
+    titles.appendChild(el("span", "drill-class", `${item.class} · ${item.service}:${item.port}`));
+    head.appendChild(titles);
+    const result = drillState.results[item.id];
+    if (result) {
+      head.appendChild(el("span", `drill-badge ${result.hit ? "hit" : "miss"}`,
+        result.hit ? "сработало" : "нет сигнала"));
+    }
+    const button = el("button", "ghost small", "прогнать");
+    button.addEventListener("click", () => runDrill(item, button));
+    head.appendChild(button);
+    row.appendChild(head);
+
+    const code = el("code", "drill-path", item.path);
+    row.appendChild(code);
+
+    const details = el("details", "drill-more");
+    details.appendChild(el("summary", null, "как это работает и что дальше"));
+    const body = el("div", "drill-body");
+    body.appendChild(el("p", null, item.why));
+    body.appendChild(el("p", "drill-next", item.next));
+    if ((item.variants || []).length) {
+      const variants = el("div", "drill-variants");
+      variants.appendChild(el("span", "drill-label", "варианты: "));
+      (item.variants || []).forEach((variant) => {
+        const chip = el("code", "drill-variant", variant);
+        chip.title = "скопировать";
+        chip.addEventListener("click", async () => {
+          await copyText(variant);
+          toast("вариант скопирован", "ok");
+        });
+        variants.appendChild(chip);
+      });
+      body.appendChild(variants);
+    }
+    body.appendChild(el("p", "drill-label", `закрывается: правило ${item.fix}`));
+    details.appendChild(body);
+    row.appendChild(details);
+    box.appendChild(row);
+  });
+}
+
+async function runDrill(item, button) {
+  const base = drillState.bases[item.service] || "";
+  button.disabled = true;
+  button.textContent = "проверяю…";
+  try {
+    const result = await api("/api/drill/run", {
+      method: "POST",
+      body: JSON.stringify({ id: item.id, base }),
+    });
+    drillState.results[item.id] = result;
+    renderDrills();
+    showDrillResult(result);
+    toast(result.hit ? `${item.title}: сработало` : `${item.title}: сигнала нет`, result.hit ? "ok" : "warn");
+  } catch (error) {
+    toast("упражнение: " + error.message, "bad");
+    button.disabled = false;
+    button.textContent = "прогнать";
+  }
+}
+
+function showDrillResult(result) {
+  const box = $("#drill-result");
+  box.hidden = false;
+  box.textContent = "";
+  const head = el("div", "row");
+  head.appendChild(el("b", null, result.title));
+  head.appendChild(el("span", `drill-badge ${result.hit ? "hit" : "miss"}`, result.hit ? "сработало" : "нет сигнала"));
+  const copy = el("button", "ghost small", "копировать запрос");
+  copy.addEventListener("click", async () => {
+    await copyText(`curl -sS '${result.url}'`);
+    toast("curl скопирован", "ok");
+  });
+  head.appendChild(copy);
+  box.appendChild(head);
+  const facts = el("div", "drill-facts");
+  facts.appendChild(el("span", null, `HTTP ${result.status ?? "—"}`));
+  facts.appendChild(el("span", null, `${result.bytes} байт`));
+  facts.appendChild(el("span", null, `${result.ms ?? "—"} мс`));
+  facts.appendChild(el("span", null, `маркер: ${result.marker}`));
+  box.appendChild(facts);
+  box.appendChild(el("pre", "drill-evidence", result.evidence || "ответ без маркера — смотрите тело и статус"));
+  box.appendChild(el("p", "drill-next", `${result.why} ${result.next}`));
+}
+
+async function loadDrills() {
+  try {
+    const payload = await api("/api/drill");
+    drillState.items = payload.drills || [];
+    drillState.bases = payload.bases || {};
+    setStatus($("#drill-status"), `${drillState.items.length} упражнений`, "ok");
+    renderDrills();
+  } catch (error) {
+    setStatus($("#drill-status"), error.message, "bad");
+  }
+}
+
+$("#btn-drill-refresh").addEventListener("click", loadDrills);
+
 /* ---------- старт ---------- */
 
 async function boot() {
@@ -1297,6 +1687,7 @@ async function boot() {
 
   loadRules();
   loadKnowledge();
+loadDrills();
 }
 
 boot();

@@ -4,7 +4,7 @@
 $ErrorActionPreference = "Stop"
 
 $repo = "malganis13/CTF-CUP-Attack-on-Defense-Lab"
-$tag = "v1.1.2"
+$tag = "v1.2.0"
 $exe = "D:\ad-audit-dist\AD-Audit.exe"
 
 $raw = "protocol=https`nhost=github.com`n`n" | git credential fill

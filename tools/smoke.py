@@ -227,6 +227,48 @@ def main() -> int:
         check("checker dir refused", "403" in denied_dir, denied_dir)
         check("checker file refused", "403" in denied_file, denied_file)
 
+        print("rules reference")
+        catalog = get("/api/patterns")
+        check("rules untranslated empty", catalog.get("untranslated") == [], str(catalog.get("untranslated")))
+        sample = next(item for item in catalog["rules"] if item["id"] == "sql-fstring")
+        check("rule has russian kind", sample.get("kind_ru") == "SQL-инъекция", str(sample.get("kind_ru")))
+        check("rule has russian patch", "параметр" in (sample.get("patch_ru") or "").lower())
+        check("rule points to fix family", (sample.get("fix") or {}).get("title") is not None, str(sample.get("fix")))
+        rule_fix = get("/api/rulefix?rule=sql-fstring")
+        check("rule fix has code", bool(rule_fix["fix"].get("after")))
+        check("rule fix has risk", rule_fix["fix"].get("risk") in {"low", "medium", "high"})
+        unknown_rule = False
+        try:
+            get("/api/rulefix?rule=nope")
+        except Exception as error:  # noqa: BLE001
+            unknown_rule = "404" in str(error)
+        check("unknown rule is 404", unknown_rule)
+
+        print("drills")
+        drills = get("/api/drill")
+        check("eight drills", len(drills.get("drills") or []) == 8, str(len(drills.get("drills") or [])))
+        check("drills carry bases", "notes" in (drills.get("bases") or {}))
+        first = drills["drills"][0]
+        check("drill has payload and marker", bool(first.get("path")) and bool(first.get("why")))
+        demo_run = False
+        try:
+            post("/api/drill/run", {"id": first["id"]})
+        except Exception as error:  # noqa: BLE001
+            demo_run = "400" in str(error) or "демо" in str(error)
+        check("drill refuses in demo", demo_run)
+
+        print("preflight")
+        pre = post("/api/preflight", {})
+        ids = [row["id"] for row in pre.get("rows") or []]
+        check("preflight has rows", len(ids) >= 3, str(ids))
+        check("preflight verdict known", pre.get("verdict") in {"ok", "warn", "fail"})
+        check("preflight checks the target", "target" in ids, str(ids))
+        check("preflight local checks only in demo", "clock" not in ids, str(ids))
+
+        print("compare")
+        compare = get("/api/compare")
+        check("compare needs two audits", compare.get("available") is False, str(compare)[:120])
+
         print("config")
         saved = post("/api/config", {"target": {"host": "10.0.0.5", "port": 2222, "user": "root", "auth": "key"}})
         check("config saved", saved.get("ok") is True)

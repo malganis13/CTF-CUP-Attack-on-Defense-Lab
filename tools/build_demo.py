@@ -17,6 +17,7 @@ BASE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE))
 
 from adkit.audit import analyze_sources  # noqa: E402
+from adkit import ru  # noqa: E402
 
 SRC = BASE / "demo" / "src"
 OUT = BASE / "demo" / "audit.json"
