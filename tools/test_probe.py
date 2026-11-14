@@ -145,6 +145,13 @@ def main() -> int:
         check("скрипт нашёл сигнал", any(row["verdict"] == "signal" for row in rows), str(rows)[:300])
         check("скрипт не ходил в чекер", not any("/_checker" in row["path"] for row in rows))
 
+    print("флаг")
+    good = probe.FLAG_RE.search("note=CTF{8f3a1c9e2b} rest")
+    check("метка флага распознаётся", bool(good), str(good))
+    check("метка флага целиком", good is not None and good.group(0) == "CTF{8f3a1c9e2b}")
+    check("чужая форма не метка", probe.FLAG_RE.search("BRACE{nope") is None)
+    check("проба отдаёт поле флага", "flag" in result["results"][0], str(result["results"][0].keys()))
+
     print("заготовка")
     scaffold = generate.generate_probe(finding("Mass assignment", "role"), "lab", "/register", port)
     check("заготовка помечена ручной", scaffold["manual"] is True)

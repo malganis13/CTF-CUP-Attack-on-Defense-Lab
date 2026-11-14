@@ -9,8 +9,10 @@ invariants that matter, and shuts the server down.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -70,6 +72,7 @@ def main() -> int:
 
     lab = lab_server.start(0)
     lab_port = lab.server_address[1]
+    state_dir = Path(tempfile.mkdtemp(prefix="ad-audit-state-"))
 
     def lab_hits() -> list[str]:
         return lab_server.HITS
@@ -81,6 +84,7 @@ def main() -> int:
         cwd=str(BASE),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        env={**os.environ, "AD_STATE_DIR": str(state_dir)},
     )
     try:
         if not wait_ready():
@@ -268,6 +272,15 @@ def main() -> int:
         print("compare")
         compare = get("/api/compare")
         check("compare needs two audits", compare.get("available") is False, str(compare)[:120])
+
+        print("state")
+        ops = get("/api/ops")
+        events = [row.get("event") for row in ops.get("ops") or []]
+        check("ops log exists", bool(events), str(events)[:120])
+        check("ops log records the audit", "audit" in events, str(events)[:120])
+        check("ops log lives on disk", (state_dir / "ops.jsonl").is_file(), str(state_dir))
+        history = (state_dir / "history.jsonl")
+        check("history persisted", history.is_file() and history.stat().st_size > 0, str(history))
 
         print("config")
         saved = post("/api/config", {"target": {"host": "10.0.0.5", "port": 2222, "user": "root", "auth": "key"}})

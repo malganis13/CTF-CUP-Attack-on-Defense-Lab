@@ -23,6 +23,7 @@ from urllib.parse import parse_qs, urlparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from adkit import __version__, drill, fixes, liveness, patterns, preflight, probe, ru
+from adkit.store import Store
 from adkit.audit import Audit, analyze_sources
 from adkit.generate import generate_probe, generate_report, pick_endpoint
 from adkit.ratelimit import BUDGET
@@ -75,6 +76,7 @@ SESSION: dict = {
 }
 JOBS: dict[str, dict] = {}
 SHUTDOWN = threading.Event()
+STORE = Store(BASE)
 
 
 def load_config() -> dict:
@@ -141,20 +143,27 @@ MAX_HISTORY = 8
 
 
 def remember_audit(audit: dict) -> None:
-    """Кладёт аудит в короткую историю: по ней видно, что закрыл патч."""
+    """Кладёт аудит в историю: по ней видно, что закрыл патч."""
+    entry = STORE.remember_audit(audit)
     history = SESSION.setdefault("history", [])
-    entry = {
+    history.append({
         "id": secrets.token_hex(4),
-        "at": audit.get("meta", {}).get("finished_at") or time.time(),
-        "findings": {item.get("id"): item for item in audit.get("findings") or [] if item.get("id")},
-        "count": len(audit.get("findings") or []),
-    }
-    history.append(entry)
+        "at": entry["at"],
+        "findings": entry["findings"],
+        "count": entry["count"],
+    })
     del history[:-MAX_HISTORY]
+    STORE.log("audit", host=entry.get("host"), findings=entry["count"],
+              services=entry.get("services"), files=entry.get("files"))
 
 
 def compare_audits(before_id: str, after_id: str) -> dict:
     history = SESSION.get("history") or []
+    if not history:
+        history = [{"id": f"saved-{index}", "at": entry.get("at", 0),
+                    "findings": entry.get("findings", {}), "count": entry.get("count", 0)}
+                   for index, entry in enumerate(STORE.history(), 1)]
+        SESSION["history"] = history
     by_id = {entry["id"]: entry for entry in history}
     before = by_id.get(before_id)
     after = by_id.get(after_id)
@@ -326,6 +335,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.handle_fix(query.get("id", [""])[0])
             elif path == "/api/traffic":
                 self.send_json(200, traffic_profile())
+            elif path == "/api/ops":
+                limit = int(query.get("limit", ["100"])[0] or 100)
+                self.send_json(200, {"ops": STORE.ops(limit), "dir": str(STORE.dir)})
             elif path == "/api/liveness":
                 if SESSION.get("demo"):
                     self.send_json(200, {
@@ -347,6 +359,9 @@ class Handler(BaseHTTPRequestHandler):
                 force = query.get("force", [""])[0] in {"1", "true", "yes"}
                 result = liveness.check(host, services, force=force)
                 SESSION["liveness"] = result
+                STORE.log("liveness", host=result.get("host"),
+                          up=(result.get("summary") or {}).get("up"),
+                          down=(result.get("summary") or {}).get("down"))
                 self.send_json(200, result)
             elif path == "/api/demo":
                 self.send_json(200, demo_audit())
@@ -426,6 +441,7 @@ class Handler(BaseHTTPRequestHandler):
                     base = f"http://{host}:{entry['port']}"
                 try:
                     self.send_json(200, drill.run(drill_id, base))
+                    STORE.log("drill", drill=drill_id, base=base)
                 except drill.DrillError as error:
                     self.send_json(400, {"error": str(error)})
             elif path == "/api/preflight":
@@ -457,6 +473,8 @@ class Handler(BaseHTTPRequestHandler):
                 result["summary"] = summary
                 result["verdict"] = "fail" if summary["fail"] else ("warn" if summary["warn"] else "ok")
                 SESSION["preflight"] = result
+                STORE.log("preflight", verdict=result.get("verdict"),
+                          summary=result.get("summary"))
                 self.send_json(200, result)
             elif path == "/api/audit":
                 if SESSION["demo"]:
@@ -509,6 +527,9 @@ class Handler(BaseHTTPRequestHandler):
                     base = f"http://{host}:{port}"
                 result = probe.run_for(finding, endpoint, base, port)
                 result["budget"] = probe.BUDGET.peek()
+                STORE.log("probe", rule=finding.get("rule"), endpoint=endpoint,
+                          verdict=(result.get("summary") or {}).get("verdict"),
+                          flags=(result.get("summary") or {}).get("flags"))
                 self.send_json(200, result)
             elif path == "/api/report":
                 audit = SESSION.get("last_audit")
@@ -710,6 +731,7 @@ def build_server(host: str, port: int, demo: bool = False) -> ThreadingHTTPServe
     if demo:
         try:
             SESSION["last_audit"] = demo_audit()
+            remember_audit(SESSION["last_audit"])
         except Exception as exc:  # noqa: BLE001
             print(f"[ad-audit] demo data unavailable: {exc}")
     return ThreadingHTTPServer((host, port), Handler)

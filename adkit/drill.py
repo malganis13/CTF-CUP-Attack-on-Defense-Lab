@@ -185,6 +185,9 @@ def run(drill_id: str, base: str) -> dict:
     elif hit:
         snippet = text.strip().replace("\n", " ")[:120]
 
+    flag_match = probe.FLAG_RE.search(text)
+    flag = flag_match.group(0)[:120] if flag_match else None
+
     return {
         "id": entry["id"],
         "title": entry["title"],
@@ -194,6 +197,7 @@ def run(drill_id: str, base: str) -> dict:
         "ms": answer.get("ms"),
         "bytes": len(body),
         "hit": hit,
+        "flag": flag,
         "reason": reason,
         "marker": entry["expect"],
         "evidence": snippet,

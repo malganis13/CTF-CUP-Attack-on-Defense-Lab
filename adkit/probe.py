@@ -37,6 +37,10 @@ BLOCKED = ("/_checker", "putflag", "getflag", "checkflag")
 MAX_JOURNAL = 500
 JOURNAL: list[dict] = []
 
+# Флаг турнира в ответе — это не «ещё одна улика», это добыча. Ищем форму
+# `prefix{...}` в любом ответе: если сервис отдал флаг на GET, он уже потерян.
+FLAG_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9_]{1,15}\{[^{}\s]{6,80}\}")
+
 PARAM_PATTERNS = (
     re.compile(r"""request\.args\.get\(\s*["']([\w.-]+)"""),
     re.compile(r"""request\.values\.get\(\s*["']([\w.-]+)"""),
@@ -301,6 +305,7 @@ def run(base: str, requests: list[dict], delay: float = DELAY) -> dict:
             "verdict": verdict,
             "evidence": evidence,
             "note": item.get("note", ""),
+            "flag": (FLAG_RE.search(haystack).group(0)[:120] if FLAG_RE.search(haystack) else None),
         })
         time.sleep(delay)
 
@@ -308,6 +313,7 @@ def run(base: str, requests: list[dict], delay: float = DELAY) -> dict:
     diffs = sum(1 for row in results if row["verdict"] == "diff")
     errors = sum(1 for row in results if row["verdict"] == "error")
     blocked = sum(1 for row in results if row["verdict"] == "blocked")
+    flags = [row["flag"] for row in results if row.get("flag")]
     return {
         "base": base,
         "endpoint": requests[0]["path"],
@@ -318,6 +324,8 @@ def run(base: str, requests: list[dict], delay: float = DELAY) -> dict:
             "diffs": diffs,
             "errors": errors,
             "blocked": blocked,
+            "flags": len(flags),
+            "flag": flags[0] if flags else None,
             "verdict": "confirmed" if signals else ("candidate" if diffs else "no signal"),
         },
     }

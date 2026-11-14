@@ -1605,7 +1605,8 @@ function renderDrills() {
 }
 
 async function runDrill(item, button) {
-  const base = drillState.bases[item.service] || "";
+  const override = ($("#drill-base").value || "").trim();
+  const base = override || drillState.bases[item.service] || "";
   button.disabled = true;
   button.textContent = "проверяю…";
   try {
@@ -1644,6 +1645,18 @@ function showDrillResult(result) {
   facts.appendChild(el("span", null, `${result.ms ?? "—"} мс`));
   facts.appendChild(el("span", null, `маркер: ${result.marker}`));
   box.appendChild(facts);
+  if (result.flag) {
+    const flagBox = el("div", "flag-hit");
+    flagBox.appendChild(el("span", null, "в ответе флаг: "));
+    flagBox.appendChild(el("code", null, result.flag));
+    const copyFlag = el("button", "ghost small", "копировать");
+    copyFlag.addEventListener("click", async () => {
+      await copyText(result.flag);
+      toast("флаг скопирован: отправляйте до конца раунда", "ok");
+    });
+    flagBox.appendChild(copyFlag);
+    box.appendChild(flagBox);
+  }
   box.appendChild(el("pre", "drill-evidence", result.evidence || "ответ без маркера — смотрите тело и статус"));
   box.appendChild(el("p", "drill-next", `${result.why} ${result.next}`));
 }

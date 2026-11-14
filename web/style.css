@@ -925,3 +925,29 @@ pre.code { white-space: pre; word-break: normal; }
 .rule-family.risk-low { color: #66d98a; }
 .rule-family.risk-medium { color: #ffce7a; }
 .rule-family.risk-high { color: #ff8b8b; }
+
+/* ---------- флаг в ответе ---------- */
+
+.flag-hit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 4px 0 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(63, 185, 80, .45);
+  background: rgba(63, 185, 80, .1);
+  color: #9be2a8;
+  font-size: 12.5px;
+}
+.flag-hit code {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: #e6edf3;
+  background: rgba(13, 17, 23, .6);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px 7px;
+  word-break: break-all;
+}
