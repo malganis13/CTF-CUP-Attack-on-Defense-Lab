@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AD Audit</title>
+<link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="mark">AD</span>
+    <span class="title">audit</span>
+    <span class="ver" id="version">—</span>
+  </div>
+  <div class="badges">
+    <span class="badge" id="badge-backend">backend: —</span>
+    <span class="badge demo" id="badge-demo" hidden>demo mode</span>
+    <span class="badge off" id="badge-target">not connected</span>
+    <span class="badge" id="badge-counts">no audit</span>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="connect" class="active">Connect</button>
+  <button data-tab="audit">Audit</button>
+  <button data-tab="services">Services</button>
+  <button data-tab="findings">Findings</button>
+  <button data-tab="files">Files</button>
+  <button data-tab="generator">Generator</button>
+  <button data-tab="report">Report</button>
+  <button data-tab="rules">Rules</button>
+  <button data-tab="knowledge">Knowledge</button>
+</nav>
+
+<main>
+  <!-- CONNECT -->
+  <section class="panel active" id="panel-connect">
+    <h2>Target</h2>
+    <p class="hint">Credentials stay in this process. Nothing is written to disk except the target block in <code>config.json</code>.</p>
+    <div class="grid">
+      <label>host<input id="cfg-host" placeholder="10.10.1.42" autocomplete="off"></label>
+      <label>port<input id="cfg-port" type="number" value="22" min="1" max="65535"></label>
+      <label>user<input id="cfg-user" placeholder="root" autocomplete="off"></label>
+      <label>auth
+        <select id="cfg-auth">
+          <option value="key">key / agent</option>
+          <option value="password">password</option>
+        </select>
+      </label>
+      <label class="wide">key path<input id="cfg-key" placeholder="C:\Users\you\.ssh\id_ed25519" autocomplete="off"></label>
+      <label class="wide" id="password-row" hidden>password<input id="cfg-password" type="password" autocomplete="new-password" placeholder="kept in memory only"></label>
+    </div>
+    <div class="row">
+      <button id="btn-save" class="primary">Save</button>
+      <button id="btn-test">Test connection</button>
+      <span class="status" id="connect-status"></span>
+    </div>
+    <pre class="log" id="connect-log" hidden></pre>
+    <div class="callout">
+      <b>Read-only contract.</b> The audit runs
+      <code>id</code>, <code>uname</code>, <code>ss</code>, <code>ps</code>,
+      <code>systemctl list-units</code>, <code>docker ps</code>,
+      <code>kubectl get</code>, <code>crontab -l</code>, <code>env</code>,
+      <code>ls</code>, <code>find</code>, <code>sed -n</code>. It never writes,
+      never restarts, never touches <code>/_checker/*</code>.
+    </div>
+  </section>
+
+  <!-- AUDIT -->
+  <section class="panel" id="panel-audit">
+    <h2>Audit</h2>
+    <div class="row">
+      <button id="btn-audit" class="primary">Run read-only audit</button>
+      <span class="status" id="audit-status"></span>
+    </div>
+    <div class="progress"><div class="bar" id="audit-bar"></div></div>
+    <pre class="log" id="audit-log">idle</pre>
+    <div id="audit-summary" class="summary" hidden>
+      <div class="stat"><span id="sum-high" class="sev high">0</span><label>high</label></div>
+      <div class="stat"><span id="sum-medium" class="sev medium">0</span><label>medium</label></div>
+      <div class="stat"><span id="sum-low" class="sev low">0</span><label>low</label></div>
+      <div class="stat"><span id="sum-info" class="sev info">0</span><label>info</label></div>
+      <div class="stat"><span id="sum-files">0</span><label>files</label></div>
+      <div class="stat"><span id="sum-endpoints">0</span><label>endpoints</label></div>
+      <div class="stat"><span id="sum-services">0</span><label>services</label></div>
+      <div class="stat"><span id="sum-time">0</span><label>ms</label></div>
+    </div>
+  </section>
+
+  <!-- SERVICES -->
+  <section class="panel" id="panel-services">
+    <h2>Services</h2>
+    <p class="hint">Listening sockets, owning process, working directory. Click a row to filter findings by that file tree.</p>
+    <div class="table-wrap"><table id="services-table">
+      <thead><tr><th>port</th><th>proto</th><th>process</th><th>pid</th><th>cwd</th><th>cmdline</th></tr></thead>
+      <tbody><tr><td colspan="6" class="empty">run an audit</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <!-- FINDINGS -->
+  <section class="panel" id="panel-findings">
+    <h2>Findings</h2>
+    <div class="filters">
+      <input id="f-search" placeholder="filter: file, rule, text">
+      <select id="f-sev">
+        <option value="">all severities</option>
+        <option value="high">high</option>
+        <option value="medium">medium</option>
+        <option value="low">low</option>
+        <option value="info">info</option>
+      </select>
+      <select id="f-kind"><option value="">all kinds</option></select>
+      <span class="status" id="f-count"></span>
+    </div>
+    <div class="split">
+      <div class="list" id="findings-list"></div>
+      <div class="detail" id="finding-detail">
+        <div class="empty">select a finding</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FILES -->
+  <section class="panel" id="panel-files">
+    <h2>Files</h2>
+    <div class="row">
+      <input id="path-input" class="grow" placeholder="/srv/notes">
+      <button id="btn-list">List</button>
+      <button id="btn-read">Open</button>
+    </div>
+    <div class="split files">
+      <div class="list" id="files-list"><div class="empty">enter a path and press List</div></div>
+      <div class="detail">
+        <div class="file-head"><span id="file-path">—</span><span class="status" id="file-status"></span></div>
+        <div class="code" id="file-view"><div class="empty">no file open</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GENERATOR -->
+  <section class="panel" id="panel-generator">
+    <h2>Generator</h2>
+    <p class="hint">Default output is a read-only GET probe with a 5 s timeout and a 64 KiB response cap. Anything that needs a state change is emitted as an inert scaffold marked <b>MANUAL REVIEW</b> and passes through the AST linter before it reaches this pane.</p>
+    <div class="grid">
+      <label>finding<input id="g-finding" readonly placeholder="pick one on the Findings tab"></label>
+      <label>service<input id="g-service" placeholder="notes"></label>
+      <label class="wide">endpoint<input id="g-endpoint" placeholder="/notes/1"></label>
+    </div>
+    <div class="row">
+      <button id="btn-generate" class="primary">Generate probe</button>
+      <button id="btn-copy-probe">Copy</button>
+      <button id="btn-save-probe">Download</button>
+      <span class="status" id="g-status"></span>
+    </div>
+    <div id="g-lint" class="lint" hidden></div>
+    <pre class="code" id="g-output"><div class="empty">nothing generated</div></pre>
+  </section>
+
+  <!-- REPORT -->
+  <section class="panel" id="panel-report">
+    <h2>Report</h2>
+    <div class="row">
+      <button id="btn-report" class="primary">Build markdown</button>
+      <button id="btn-copy-report">Copy</button>
+      <button id="btn-save-report">Download</button>
+      <span class="status" id="r-status"></span>
+    </div>
+    <pre class="code" id="r-output"><div class="empty">no report</div></pre>
+  </section>
+
+  <!-- RULES -->
+  <section class="panel" id="panel-rules">
+    <h2>Rules</h2>
+    <p class="hint">Heuristics, not proofs. Each hit is a place to read, not a confirmed bug.</p>
+    <div class="table-wrap"><table id="rules-table">
+      <thead><tr><th>id</th><th>kind</th><th>severity</th><th>what it means</th><th>how to patch</th></tr></thead>
+      <tbody><tr><td colspan="5" class="empty">loading</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <!-- KNOWLEDGE -->
+  <section class="panel" id="panel-knowledge">
+    <h2>Knowledge</h2>
+    <div class="split files">
+      <div class="list" id="knowledge-list"></div>
+      <div class="detail"><pre class="code" id="knowledge-view"><div class="empty">pick a note</div></pre></div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>127.0.0.1 only</span>
+  <span>read-only audit</span>
+  <span>never touch <code>/_checker/*</code></span>
+</footer>
+
+<script src="/web/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "target": {
+    "host": "10.10.1.42",
+    "port": 22,
+    "user": "root",
+    "auth": "key",
+    "key_path": "C:\\Users\\you\\.ssh\\id_ed25519"
+  },
+  "audit": {
+    "max_files": 300,
+    "max_file_bytes": 262144
+  }
+}

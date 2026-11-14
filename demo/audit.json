@@ -1,0 +1,742 @@
+{
+  "host": "demo@vulnbox:22 (fixture)",
+  "generated_at": "2026-11-14T18:28:33Z",
+  "services": [
+    {
+      "port": 8081,
+      "proto": "tcp",
+      "state": "LISTEN",
+      "address": "0.0.0.0:8081",
+      "process": "python3",
+      "pid": 1412,
+      "cwd": "/srv/notes",
+      "cmdline": "/usr/bin/python3 /srv/notes/app.py",
+      "service": "notes",
+      "language": "python"
+    },
+    {
+      "port": 8082,
+      "proto": "tcp",
+      "state": "LISTEN",
+      "address": "0.0.0.0:8082",
+      "process": "python3",
+      "pid": 1418,
+      "cwd": "/srv/files",
+      "cmdline": "/usr/bin/python3 /srv/files/app.py",
+      "service": "files",
+      "language": "python"
+    },
+    {
+      "port": 8083,
+      "proto": "tcp",
+      "state": "LISTEN",
+      "address": "0.0.0.0:8083",
+      "process": "python3",
+      "pid": 1423,
+      "cwd": "/srv/profile",
+      "cmdline": "/usr/bin/python3 /srv/profile/app.py",
+      "service": "profile",
+      "language": "python"
+    }
+  ],
+  "files": [
+    {
+      "path": "/srv/files/app.py",
+      "language": "python",
+      "lines": 54,
+      "findings": 5
+    },
+    {
+      "path": "/srv/notes/app.py",
+      "language": "python",
+      "lines": 68,
+      "findings": 9
+    },
+    {
+      "path": "/srv/profile/app.py",
+      "language": "python",
+      "lines": 73,
+      "findings": 5
+    }
+  ],
+  "endpoints": [
+    {
+      "path": "/download",
+      "method": "ANY",
+      "file": "/srv/files/app.py",
+      "line": 18
+    },
+    {
+      "path": "/download",
+      "method": "GET",
+      "file": "/srv/files/app.py",
+      "line": 18
+    },
+    {
+      "path": "/view",
+      "method": "ANY",
+      "file": "/srv/files/app.py",
+      "line": 25
+    },
+    {
+      "path": "/view",
+      "method": "GET",
+      "file": "/srv/files/app.py",
+      "line": 25
+    },
+    {
+      "path": "/browse",
+      "method": "ANY",
+      "file": "/srv/files/app.py",
+      "line": 32
+    },
+    {
+      "path": "/browse",
+      "method": "GET",
+      "file": "/srv/files/app.py",
+      "line": 32
+    },
+    {
+      "path": "/upload",
+      "method": "ANY",
+      "file": "/srv/files/app.py",
+      "line": 39
+    },
+    {
+      "path": "/upload",
+      "method": "POST",
+      "file": "/srv/files/app.py",
+      "line": 39
+    },
+    {
+      "path": "/go",
+      "method": "ANY",
+      "file": "/srv/files/app.py",
+      "line": 48
+    },
+    {
+      "path": "/go",
+      "method": "GET",
+      "file": "/srv/files/app.py",
+      "line": 48
+    },
+    {
+      "path": "/notes/<int:note_id>",
+      "method": "ANY",
+      "file": "/srv/notes/app.py",
+      "line": 29
+    },
+    {
+      "path": "/notes/<int:note_id>",
+      "method": "GET",
+      "file": "/srv/notes/app.py",
+      "line": 29
+    },
+    {
+      "path": "/search",
+      "method": "ANY",
+      "file": "/srv/notes/app.py",
+      "line": 39
+    },
+    {
+      "path": "/search",
+      "method": "GET",
+      "file": "/srv/notes/app.py",
+      "line": 39
+    },
+    {
+      "path": "/raw",
+      "method": "ANY",
+      "file": "/srv/notes/app.py",
+      "line": 47
+    },
+    {
+      "path": "/raw",
+      "method": "GET",
+      "file": "/srv/notes/app.py",
+      "line": 47
+    },
+    {
+      "path": "/preview",
+      "method": "ANY",
+      "file": "/srv/notes/app.py",
+      "line": 54
+    },
+    {
+      "path": "/preview",
+      "method": "GET",
+      "file": "/srv/notes/app.py",
+      "line": 54
+    },
+    {
+      "path": "/hello",
+      "method": "ANY",
+      "file": "/srv/notes/app.py",
+      "line": 61
+    },
+    {
+      "path": "/hello",
+      "method": "GET",
+      "file": "/srv/notes/app.py",
+      "line": 61
+    },
+    {
+      "path": "/register",
+      "method": "ANY",
+      "file": "/srv/profile/app.py",
+      "line": 21
+    },
+    {
+      "path": "/register",
+      "method": "POST",
+      "file": "/srv/profile/app.py",
+      "line": 21
+    },
+    {
+      "path": "/import",
+      "method": "ANY",
+      "file": "/srv/profile/app.py",
+      "line": 39
+    },
+    {
+      "path": "/import",
+      "method": "POST",
+      "file": "/srv/profile/app.py",
+      "line": 39
+    },
+    {
+      "path": "/me",
+      "method": "ANY",
+      "file": "/srv/profile/app.py",
+      "line": 46
+    },
+    {
+      "path": "/me",
+      "method": "GET",
+      "file": "/srv/profile/app.py",
+      "line": 46
+    },
+    {
+      "path": "/avatar",
+      "method": "ANY",
+      "file": "/srv/profile/app.py",
+      "line": 53
+    },
+    {
+      "path": "/avatar",
+      "method": "GET",
+      "file": "/srv/profile/app.py",
+      "line": 53
+    },
+    {
+      "path": "/profile/<int:profile_id>",
+      "method": "ANY",
+      "file": "/srv/profile/app.py",
+      "line": 60
+    },
+    {
+      "path": "/profile/<int:profile_id>",
+      "method": "GET",
+      "file": "/srv/profile/app.py",
+      "line": 60
+    }
+  ],
+  "findings": [
+    {
+      "id": "99fc8d645e",
+      "rule": "path-join",
+      "kind": "Path traversal",
+      "severity": "high",
+      "file": "/srv/files/app.py",
+      "line": 21,
+      "snippet": "path = os.path.join(UPLOAD_ROOT, name)",
+      "context": [
+        "@app.get(\"/download\")",
+        "def download():",
+        "    name = request.args.get(\"name\", \"readme.txt\")",
+        "    path = os.path.join(UPLOAD_ROOT, name)",
+        "    return send_file(path)",
+        "",
+        ""
+      ],
+      "context_start": 18,
+      "why": "A filesystem path is joined from request-controlled data without a containment check.",
+      "patch": "Resolve the real path and verify it stays under the intended root; prefer an allowlist.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "036fa6d292",
+      "rule": "path-join",
+      "kind": "Path traversal",
+      "severity": "high",
+      "file": "/srv/files/app.py",
+      "line": 28,
+      "snippet": "with open(os.path.join(UPLOAD_ROOT, name), \"rb\") as handle:",
+      "context": [
+        "@app.get(\"/view\")",
+        "def view():",
+        "    name = request.args.get(\"name\", \"readme.txt\")",
+        "    with open(os.path.join(UPLOAD_ROOT, name), \"rb\") as handle:",
+        "        return handle.read()",
+        "",
+        ""
+      ],
+      "context_start": 25,
+      "why": "A filesystem path is joined from request-controlled data without a containment check.",
+      "patch": "Resolve the real path and verify it stays under the intended root; prefer an allowlist.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "c4e1e1896d",
+      "rule": "path-join",
+      "kind": "Path traversal",
+      "severity": "high",
+      "file": "/srv/files/app.py",
+      "line": 35,
+      "snippet": "entries = sorted(os.listdir(os.path.join(UPLOAD_ROOT, name)))",
+      "context": [
+        "@app.get(\"/browse\")",
+        "def browse():",
+        "    name = request.args.get(\"name\", \".\")",
+        "    entries = sorted(os.listdir(os.path.join(UPLOAD_ROOT, name)))",
+        "    return {\"entries\": entries}",
+        "",
+        ""
+      ],
+      "context_start": 32,
+      "why": "A filesystem path is joined from request-controlled data without a containment check.",
+      "patch": "Resolve the real path and verify it stays under the intended root; prefer an allowlist.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "94cce227a0",
+      "rule": "path-join",
+      "kind": "Path traversal",
+      "severity": "high",
+      "file": "/srv/files/app.py",
+      "line": 44,
+      "snippet": "handle.save(os.path.join(UPLOAD_ROOT, handle.filename))",
+      "context": [
+        "    handle = request.files.get(\"file\")",
+        "    if handle is None:",
+        "        abort(400)",
+        "    handle.save(os.path.join(UPLOAD_ROOT, handle.filename))",
+        "    return {\"ok\": True}",
+        "",
+        ""
+      ],
+      "context_start": 41,
+      "why": "A filesystem path is joined from request-controlled data without a containment check.",
+      "patch": "Resolve the real path and verify it stays under the intended root; prefer an allowlist.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "8ed8a6dafa",
+      "rule": "idor-id-only",
+      "kind": "IDOR / BOLA",
+      "severity": "high",
+      "file": "/srv/notes/app.py",
+      "line": 32,
+      "snippet": "\"SELECT title, body FROM notes WHERE id = ?\", (note_id,)",
+      "context": [
+        "@app.get(\"/notes/<int:note_id>\")",
+        "def note(note_id: int):",
+        "    row = db().execute(",
+        "        \"SELECT title, body FROM notes WHERE id = ?\", (note_id,)",
+        "    ).fetchone()",
+        "    if row is None:",
+        "        return jsonify(error=\"not found\"), 404"
+      ],
+      "context_start": 29,
+      "why": "An object is fetched by id alone. The owner is not part of the query.",
+      "patch": "Bind the object to the authenticated principal: WHERE id=? AND owner=?.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "f5fdafe1ca",
+      "rule": "sql-fstring",
+      "kind": "SQL injection",
+      "severity": "high",
+      "file": "/srv/notes/app.py",
+      "line": 42,
+      "snippet": "query = f\"SELECT id, title FROM notes WHERE title LIKE '%{term}%'\"",
+      "context": [
+        "@app.get(\"/search\")",
+        "def search():",
+        "    term = request.args.get(\"q\", \"\")",
+        "    query = f\"SELECT id, title FROM notes WHERE title LIKE '%{term}%'\"",
+        "    rows = db().execute(query).fetchall()",
+        "    return jsonify(rows=[dict(r) for r in rows])",
+        ""
+      ],
+      "context_start": 39,
+      "why": "A query is assembled with an f-string. User input becomes SQL syntax.",
+      "patch": "Pass values as bound parameters: WHERE title LIKE ? with (value,). Never format SQL.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "ae788560d5",
+      "rule": "sql-format",
+      "kind": "SQL injection",
+      "severity": "high",
+      "file": "/srv/notes/app.py",
+      "line": 50,
+      "snippet": "rows = db().execute(\"SELECT id, title FROM notes WHERE title LIKE '%\" + term + \"%'\").fetchall()",
+      "context": [
+        "@app.get(\"/raw\")",
+        "def raw():",
+        "    term = request.args.get(\"q\", \"\")",
+        "    rows = db().execute(\"SELECT id, title FROM notes WHERE title LIKE '%\" + term + \"%'\").fetchall()",
+        "    return jsonify(rows=[dict(r) for r in rows])",
+        "",
+        ""
+      ],
+      "context_start": 47,
+      "why": "A query is assembled with +, % or .format(). User input becomes SQL syntax.",
+      "patch": "Use parameter binding. Allowlist column and sort names; they cannot be bound.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "7a034e57ca",
+      "rule": "cmd-shell",
+      "kind": "Command injection",
+      "severity": "high",
+      "file": "/srv/notes/app.py",
+      "line": 57,
+      "snippet": "os.system(f\"convert -thumbnail 120x120 /srv/notes/{name} /tmp/preview.png\")",
+      "context": [
+        "@app.get(\"/preview\")",
+        "def preview():",
+        "    name = request.args.get(\"name\", \"\")",
+        "    os.system(f\"convert -thumbnail 120x120 /srv/notes/{name} /tmp/preview.png\")",
+        "    return jsonify(ok=True)",
+        "",
+        ""
+      ],
+      "context_start": 54,
+      "why": "A shell or command executor is reachable from request data.",
+      "patch": "Avoid the shell; pass an argument vector. Allowlist the command and its arguments.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "0b51b60ff1",
+      "rule": "mass-assign",
+      "kind": "Mass assignment",
+      "severity": "high",
+      "file": "/srv/profile/app.py",
+      "line": 27,
+      "snippet": "\"role\": payload.get(\"role\", \"user\"),",
+      "context": [
+        "    profile = {",
+        "        \"name\": payload.get(\"name\", \"anonymous\"),",
+        "        \"bio\": payload.get(\"bio\", \"\"),",
+        "        \"role\": payload.get(\"role\", \"user\"),",
+        "    }",
+        "    conn = sqlite3.connect(DB_PATH)",
+        "    conn.execute("
+      ],
+      "context_start": 24,
+      "why": "A privileged field such as role is taken from the request body.",
+      "patch": "Use an explicit allowlist of user-editable fields; set role server-side.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "e9b38b0070",
+      "rule": "deserialization",
+      "kind": "Unsafe deserialization",
+      "severity": "high",
+      "file": "/srv/profile/app.py",
+      "line": 42,
+      "snippet": "profile = pickle.loads(blob)",
+      "context": [
+        "@app.post(\"/import\")",
+        "def import_profile():",
+        "    blob = request.get_data()",
+        "    profile = pickle.loads(blob)",
+        "    return jsonify(profile=profile)",
+        "",
+        ""
+      ],
+      "context_start": 39,
+      "why": "Untrusted data reaches a deserializer that can construct objects or execute code.",
+      "patch": "Use a data-only format (JSON), signed payloads, or an allowlist of classes.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "a92baa9b7f",
+      "rule": "jwt-none",
+      "kind": "JWT verification bypass",
+      "severity": "high",
+      "file": "/srv/profile/app.py",
+      "line": 49,
+      "snippet": "claims = jwt.decode(token, JWT_SECRET, verify=False)",
+      "context": [
+        "@app.get(\"/me\")",
+        "def me():",
+        "    token = request.headers.get(\"Authorization\", \"\").removeprefix(\"Bearer \")",
+        "    claims = jwt.decode(token, JWT_SECRET, verify=False)",
+        "    return jsonify(claims=claims)",
+        "",
+        ""
+      ],
+      "context_start": 46,
+      "why": "JWT verification is disabled or the none algorithm is accepted.",
+      "patch": "Verify signature and algorithms explicitly; never trust alg from the token.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "a097c14edf",
+      "rule": "idor-id-only",
+      "kind": "IDOR / BOLA",
+      "severity": "high",
+      "file": "/srv/profile/app.py",
+      "line": 64,
+      "snippet": "\"SELECT name, bio, role FROM profiles WHERE id = ?\", (profile_id,)",
+      "context": [
+        "def profile(profile_id: int):",
+        "    conn = sqlite3.connect(DB_PATH)",
+        "    row = conn.execute(",
+        "        \"SELECT name, bio, role FROM profiles WHERE id = ?\", (profile_id,)",
+        "    ).fetchone()",
+        "    conn.close()",
+        "    if row is None:"
+      ],
+      "context_start": 61,
+      "why": "An object is fetched by id alone. The owner is not part of the query.",
+      "patch": "Bind the object to the authenticated principal: WHERE id=? AND owner=?.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "cf12b0087b",
+      "rule": "hardcoded-secret",
+      "kind": "Hardcoded secret",
+      "severity": "medium",
+      "file": "/srv/notes/app.py",
+      "line": 14,
+      "snippet": "API_KEY = \"AKIAIOSFODNN7EXAMPLE\"",
+      "context": [
+        "",
+        "from flask import Flask, g, jsonify, render_template_string, request",
+        "",
+        "API_KEY = \"AKIAIOSFODNN7EXAMPLE\"",
+        "FLAG_SAMPLE = \"ctfcup{demo_flag_lives_in_this_table}\"",
+        "DB_PATH = os.path.join(os.path.dirname(__file__), \"notes.sqlite3\")",
+        ""
+      ],
+      "context_start": 11,
+      "why": "A password, token or key is embedded in source or a default value.",
+      "patch": "Load secrets from the environment; rotate this value before deployment.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "35519f110f",
+      "rule": "sql-exec-var",
+      "kind": "SQL injection",
+      "severity": "medium",
+      "file": "/srv/notes/app.py",
+      "line": 43,
+      "snippet": "rows = db().execute(query).fetchall()",
+      "context": [
+        "def search():",
+        "    term = request.args.get(\"q\", \"\")",
+        "    query = f\"SELECT id, title FROM notes WHERE title LIKE '%{term}%'\"",
+        "    rows = db().execute(query).fetchall()",
+        "    return jsonify(rows=[dict(r) for r in rows])",
+        "",
+        ""
+      ],
+      "context_start": 40,
+      "why": "A query variable is executed directly. Trace where that variable was built.",
+      "patch": "Check the construction site; if it contains request data, bind parameters instead.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "14678eb312",
+      "rule": "debug-on",
+      "kind": "Debug mode",
+      "severity": "medium",
+      "file": "/srv/notes/app.py",
+      "line": 68,
+      "snippet": "app.run(host=\"0.0.0.0\", port=8081, debug=True)",
+      "context": [
+        "",
+        "",
+        "if __name__ == \"__main__\":",
+        "    app.run(host=\"0.0.0.0\", port=8081, debug=True)"
+      ],
+      "context_start": 65,
+      "why": "Debug mode or an interactive debugger is enabled.",
+      "patch": "Disable debug and reload in production; it often exposes a console.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "01567cc380",
+      "rule": "ssrf",
+      "kind": "SSRF",
+      "severity": "medium",
+      "file": "/srv/profile/app.py",
+      "line": 56,
+      "snippet": "response = requests.get(url, timeout=3)",
+      "context": [
+        "@app.get(\"/avatar\")",
+        "def avatar():",
+        "    url = request.args.get(\"url\", \"http://127.0.0.1/static/avatar.png\")",
+        "    response = requests.get(url, timeout=3)",
+        "    return jsonify(status=response.status_code, length=len(response.content))",
+        "",
+        ""
+      ],
+      "context_start": 53,
+      "why": "A server-side HTTP client receives request-controlled URL data.",
+      "patch": "Allowlist scheme, host and port; block link-local and metadata addresses.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "d65878ff2b",
+      "rule": "open-redirect",
+      "kind": "Open redirect",
+      "severity": "low",
+      "file": "/srv/files/app.py",
+      "line": 50,
+      "snippet": "return redirect(request.args.get(\"next\", \"/\"))",
+      "context": [
+        "",
+        "@app.get(\"/go\")",
+        "def go():",
+        "    return redirect(request.args.get(\"next\", \"/\"))",
+        "",
+        "",
+        "if __name__ == \"__main__\":"
+      ],
+      "context_start": 47,
+      "why": "A redirect target comes from request data.",
+      "patch": "Allowlist relative paths or known hosts; never redirect to arbitrary input.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "dddd9dc1cd",
+      "rule": "flag-literal",
+      "kind": "Flag literal",
+      "severity": "info",
+      "file": "/srv/notes/app.py",
+      "line": 15,
+      "snippet": "FLAG_SAMPLE = \"ctfcup{demo_flag_lives_in_this_table}\"",
+      "context": [
+        "from flask import Flask, g, jsonify, render_template_string, request",
+        "",
+        "API_KEY = \"AKIAIOSFODNN7EXAMPLE\"",
+        "FLAG_SAMPLE = \"ctfcup{demo_flag_lives_in_this_table}\"",
+        "DB_PATH = os.path.join(os.path.dirname(__file__), \"notes.sqlite3\")",
+        "",
+        "app = Flask(__name__)"
+      ],
+      "context_start": 12,
+      "why": "A flag-shaped literal or storage path is present in source.",
+      "patch": "Locate where the checker writes it. Read it through the intended API, not the disk.",
+      "checker_risk": "low",
+      "language": "python"
+    },
+    {
+      "id": "af8b240a9e",
+      "rule": "checker-ref",
+      "kind": "Checker reference",
+      "severity": "info",
+      "file": "/srv/notes/app.py",
+      "line": 28,
+      "snippet": "# The checker pushes flags through /_checker/notes/<flag_id>. Read only.",
+      "context": [
+        "    return g.db",
+        "",
+        "",
+        "# The checker pushes flags through /_checker/notes/<flag_id>. Read only.",
+        "@app.get(\"/notes/<int:note_id>\")",
+        "def note(note_id: int):",
+        "    row = db().execute("
+      ],
+      "context_start": 25,
+      "why": "The code mentions the checker protocol. These paths are not attack targets.",
+      "patch": "Do not send requests to /_checker/*. Do not modify checker state. Read only.",
+      "checker_risk": "high",
+      "language": "python"
+    }
+  ],
+  "counts": {
+    "high": 12,
+    "medium": 4,
+    "low": 1,
+    "info": 2
+  },
+  "checker": {
+    "refs": [
+      {
+        "id": "af8b240a9e",
+        "rule": "checker-ref",
+        "kind": "Checker reference",
+        "severity": "info",
+        "file": "/srv/notes/app.py",
+        "line": 28,
+        "snippet": "# The checker pushes flags through /_checker/notes/<flag_id>. Read only.",
+        "context": [
+          "    return g.db",
+          "",
+          "",
+          "# The checker pushes flags through /_checker/notes/<flag_id>. Read only.",
+          "@app.get(\"/notes/<int:note_id>\")",
+          "def note(note_id: int):",
+          "    row = db().execute("
+        ],
+        "context_start": 25,
+        "why": "The code mentions the checker protocol. These paths are not attack targets.",
+        "patch": "Do not send requests to /_checker/*. Do not modify checker state. Read only.",
+        "checker_risk": "high",
+        "language": "python"
+      }
+    ],
+    "mentions": [
+      "/_checker/notes/"
+    ],
+    "warning": "Never send requests to /_checker/*. Never modify checker state."
+  },
+  "flags": {
+    "literals": [
+      "ctfcup{demo_flag_lives_in_this_table}"
+    ],
+    "storage": []
+  },
+  "meta": {
+    "roots": [
+      "/srv/notes",
+      "/srv/files",
+      "/srv/profile"
+    ],
+    "source_files": 3,
+    "duration_ms": 812,
+    "commands": [
+      "fixture",
+      "no ssh"
+    ],
+    "findings_total": 19,
+    "demo": true
+  },
+  "os": [
+    "Arch Linux",
+    "Linux vulnbox 6.11.5-arch1-1 x86_64 GNU/Linux"
+  ]
+}
