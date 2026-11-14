@@ -202,12 +202,16 @@
               <h2>Слушающие сервисы</h2>
               <p class="lead" style="margin:0">Клик по строке открывает каталог сервиса во вкладке «Файлы».</p>
             </div>
-            <input id="svc-search" placeholder="фильтр: порт, процесс, стек" style="max-width:260px">
+            <input id="svc-search" placeholder="фильтр: порт, процесс, стек" style="max-width:240px">
+            <button id="btn-live" class="ghost" title="Один GET на сервис: 200 — не лежит, отказ — лежит">Проверить живость</button>
             <span class="status" id="svc-count"></span>
           </div>
+          <div class="row" style="margin-bottom:10px">
+            <span class="status" id="svc-live-summary"></span>
+          </div>
           <div class="table-wrap"><table id="services-table">
-            <thead><tr><th>порт</th><th>прото</th><th>сервис</th><th>стек</th><th>pid</th><th>каталог</th><th>команда</th></tr></thead>
-            <tbody><tr><td colspan="7" class="empty">запустите аудит</td></tr></tbody>
+            <thead><tr><th>порт</th><th>прото</th><th>сервис</th><th>живость</th><th>стек</th><th>pid</th><th>каталог</th><th>команда</th></tr></thead>
+            <tbody><tr><td colspan="8" class="empty">запустите аудит</td></tr></tbody>
           </table></div>
         </div>
       </section>

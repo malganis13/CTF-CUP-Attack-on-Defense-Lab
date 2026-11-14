@@ -22,7 +22,7 @@ from urllib.parse import parse_qs, urlparse
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from adkit import __version__, fixes, patterns, probe
+from adkit import __version__, fixes, liveness, patterns, probe
 from adkit.audit import Audit, analyze_sources
 from adkit.generate import generate_probe, generate_report, pick_endpoint
 from adkit.ratelimit import BUDGET
@@ -106,6 +106,7 @@ def public_state() -> dict:
         "target": target,
         "has_password": bool(SESSION.get("password")),
         "has_audit": SESSION.get("last_audit") is not None,
+        "liveness": SESSION.get("liveness") or None,
         "rules": len(patterns.RULES),
         "budget": probe.BUDGET.peek(),
     }
@@ -247,6 +248,21 @@ class Handler(BaseHTTPRequestHandler):
                 self.handle_fix(query.get("id", [""])[0])
             elif path == "/api/traffic":
                 self.send_json(200, traffic_profile())
+            elif path == "/api/liveness":
+                if SESSION.get("demo"):
+                    self.send_json(200, {
+                        "host": "", "rows": [],
+                        "summary": {"up": 0, "down": 0, "sick": 0, "open": 0, "local": 0, "unknown": 0},
+                        "error": "демо-режим: живых сервисов нет, проверка выключена",
+                    })
+                    return
+                audit = SESSION.get("last_audit") or {}
+                services = audit.get("services") or []
+                host = (SESSION["config"].get("target", {}).get("host") or "").strip()
+                force = query.get("force", [""])[0] in {"1", "true", "yes"}
+                result = liveness.check(host, services, force=force)
+                SESSION["liveness"] = result
+                self.send_json(200, result)
             elif path == "/api/demo":
                 self.send_json(200, demo_audit())
             elif path == "/api/last":
@@ -479,9 +495,12 @@ def traffic_profile() -> dict:
             "budget_capacity": capacity,
             "budget_window_s": window,
             "checker_paths_blocked": list(probe.BLOCKED),
+            "liveness_requests_per_service": 2,
+            "liveness_cooldown_s": liveness.COOLDOWN,
         },
         "claims": [
             f"не больше {probe.MAX_REQUESTS} GET на пробу, плюс один базовый запрос для сравнения",
+            f"проверка живости: один GET на сервис, повтор не чаще раза в {liveness.COOLDOWN:.0f} с",
             f"пауза между запросами не меньше {probe.MIN_DELAY:.2f} с — это меньше 10 запросов в секунду на пробу",
             f"общий бюджет процесса: {capacity} запросов за {window} с, списывается до отправки",
             "только GET без тела; POST не отправляется, изменения состояния — только заготовкой вручную",

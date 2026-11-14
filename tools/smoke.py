@@ -201,6 +201,17 @@ def main() -> int:
         check("budget cap", caps.get("budget_capacity") == 30 and caps.get("budget_window_s") == 60, str(caps))
         check("checker paths blocked", "_checker" in (caps.get("checker_paths_blocked") or [""])[0])
         check("traffic claims non-empty", len(traffic.get("claims") or []) >= 4)
+        check("liveness caps", caps.get("liveness_requests_per_service") == 2, str(caps))
+
+        print("liveness")
+        before = len(get("/api/traffic").get("events") or [])
+        live = get("/api/liveness")
+        check("liveness in demo is off", bool(live.get("error")), str(live)[:160])
+        check("liveness summary shape",
+              all(key in (live.get("summary") or {}) for key in ("up", "down", "sick", "open", "local")),
+              str(live.get("summary")))
+        after = len(get("/api/traffic").get("events") or [])
+        check("liveness made no requests", after == before, f"{before} -> {after}")
 
         print("checker guard")
         denied_dir = ""

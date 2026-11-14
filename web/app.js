@@ -44,6 +44,7 @@ const state = {
   findings: [],
   filter: { q: "", sev: "", kind: "" },
   svcFilter: "",
+  liveness: null,
   rulesFilter: "",
   activeFinding: null,
   activeFile: null,
@@ -380,6 +381,9 @@ function ingest(audit) {
   renderFindings();
   renderKindFilter();
   if (state.activeFinding) setGeneratorFinding(state.activeFinding);
+  if ((audit.services || []).length && !state.liveness) {
+    checkLiveness(false).catch(() => {});
+  }
 }
 
 function renderSummary() {
@@ -414,6 +418,66 @@ $$("#audit-tiles .tile").forEach((tile) => {
 
 /* ---------- сервисы ---------- */
 
+const LIVE_LABEL = { up: "не лежит", down: "лежит", sick: "ошибки", open: "открыт", local: "loopback", unknown: "?" };
+
+function liveRow(port) {
+  const table = (state.liveness && state.liveness.rows) || [];
+  return table.find((row) => Number(row.port) === Number(port)) || null;
+}
+
+function renderLivenessSummary() {
+  const box = $("#svc-live-summary");
+  const live = state.liveness;
+  if (!box) return;
+  if (live && live.error) {
+    box.textContent = live.error;
+    box.className = "status";
+    return;
+  }
+  if (!live || !live.rows || !live.rows.length) {
+    box.textContent = "";
+    box.className = "status";
+    return;
+  }
+  const summary = live.summary || {};
+  const parts = [];
+  if (summary.up) parts.push(`живых ${summary.up}`);
+  if (summary.open) parts.push(`открытых ${summary.open}`);
+  if (summary.down) parts.push(`лежит ${summary.down}`);
+  if (summary.sick) parts.push(`с ошибками ${summary.sick}`);
+  if (summary.local) parts.push(`только loopback ${summary.local}`);
+  if (summary.unknown) parts.push(`без ответа ${summary.unknown}`);
+  box.textContent = parts.join(" · ") + (live.avg_ms != null ? ` · отклик ${live.avg_ms} мс` : "");
+  box.className = "status " + (summary.down || summary.sick ? "bad" : "ok");
+}
+
+async function checkLiveness(force = true) {
+  const button = $("#btn-live");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "проверяю…";
+  }
+  try {
+    state.liveness = await api(`/api/liveness${force ? "?force=1" : ""}`);
+    renderServices();
+    renderLivenessSummary();
+    if (state.liveness.error) {
+      if (force) toast(state.liveness.error, "bad");
+      return;
+    }
+    const summary = state.liveness.summary || {};
+    if (summary.down) toast(`сервисов лежит: ${summary.down}`, "bad");
+    else toast(`все сервисы отвечают${state.liveness.avg_ms != null ? `, отклик ${state.liveness.avg_ms} мс` : ""}`, "ok");
+  } catch (error) {
+    toast("проверка живости: " + error.message, "bad");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Проверить живость";
+    }
+  }
+}
+
 function renderServices() {
   const body = $("#services-table tbody");
   body.textContent = "";
@@ -426,7 +490,7 @@ function renderServices() {
   if (!services.length) {
     const row = el("tr");
     const cell = el("td", "empty", state.audit ? "нет совпадений" : "запустите аудит");
-    cell.colSpan = 7;
+    cell.colSpan = 8;
     row.appendChild(cell);
     body.appendChild(row);
     return;
@@ -436,6 +500,23 @@ function renderServices() {
     row.appendChild(el("td", "cell-mono", service.port));
     row.appendChild(el("td", "cell-mono", service.proto));
     row.appendChild(el("td", "cell-mono", service.service || service.process || "?"));
+
+    const liveCell = el("td");
+    const live = liveRow(service.port);
+    if (live) {
+      const chip = el("span", `live-lamp ${live.state}`, LIVE_LABEL[live.state] || live.state);
+      chip.title = live.note || "";
+      liveCell.appendChild(chip);
+      if (live.ms != null) {
+        const ms = el("span", "live-ms", `${live.ms} мс`);
+        liveCell.appendChild(ms);
+      }
+    } else {
+      liveCell.className = "empty";
+      liveCell.textContent = "—";
+    }
+    row.appendChild(liveCell);
+
     const stackCell = el("td");
     if (service.stack) stackCell.appendChild(el("span", "pill", service.stack));
     else { stackCell.textContent = "—"; stackCell.className = "empty"; }
@@ -458,12 +539,15 @@ function renderServices() {
     }
     body.appendChild(row);
   });
+  renderLivenessSummary();
 }
 
 $("#svc-search").addEventListener("input", (event) => {
   state.svcFilter = event.target.value;
   renderServices();
 });
+
+$("#btn-live").addEventListener("click", () => checkLiveness(true));
 
 /* ---------- находки ---------- */
 

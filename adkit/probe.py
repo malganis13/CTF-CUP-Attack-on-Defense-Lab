@@ -181,7 +181,7 @@ def build_requests(finding: dict, endpoint: str, port: int = 80) -> list[dict]:
     return requests[:MAX_REQUESTS]
 
 
-def _fetch(opener, url: str) -> dict:
+def _fetch(opener, url: str, label: str = "probe") -> dict:
     started = time.time()
     request = urllib.request.Request(url, method="GET", headers={"User-Agent": "ad-audit-probe/1.0"})
     try:
@@ -197,6 +197,7 @@ def _fetch(opener, url: str) -> dict:
         JOURNAL.append({
             "at": round(started, 3), "url": url, "status": 0, "bytes": 0,
             "ms": int((time.time() - started) * 1000), "error": f"{type(error).__name__}",
+            "label": label,
         })
         del JOURNAL[:-MAX_JOURNAL]
         return {"status": 0, "body": b"", "headers": {}, "ms": int((time.time() - started) * 1000),
@@ -204,6 +205,7 @@ def _fetch(opener, url: str) -> dict:
     JOURNAL.append({
         "at": round(started, 3), "url": url, "status": status, "bytes": len(body),
         "ms": int((time.time() - started) * 1000), "error": None,
+        "label": label,
     })
     del JOURNAL[:-MAX_JOURNAL]
     return {
