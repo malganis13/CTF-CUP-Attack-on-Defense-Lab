@@ -246,6 +246,9 @@ pre.code .empty { padding: 0; }
 .sev.low { color: var(--low); }
 .sev.info { color: var(--info); }
 
+.langs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.langs .pill { font-size: 11px; }
+
 /* tables */
 .table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 4px; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }

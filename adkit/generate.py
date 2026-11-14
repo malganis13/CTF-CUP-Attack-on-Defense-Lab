@@ -128,6 +128,9 @@ def generate_probe(finding: dict, service: str, endpoint: str | None = None) -> 
 
 def generate_report(audit: dict) -> str:
     counts = audit.get("counts", {})
+    language_line = ", ".join(
+        f"{entry['language']} ×{entry['files']}" for entry in audit.get("languages", [])
+    ) or "none detected"
     lines = [
         "# AD audit report",
         "",
@@ -135,18 +138,19 @@ def generate_report(audit: dict) -> str:
         f"- generated: {audit.get('generated_at', '')}",
         f"- services: {len(audit.get('services', []))}",
         f"- source files: {len(audit.get('files', []))}",
+        f"- languages: {language_line}",
         f"- findings: high {counts.get('high', 0)}, medium {counts.get('medium', 0)}, "
         f"low {counts.get('low', 0)}, info {counts.get('info', 0)}",
         "",
         "## Services",
         "",
-        "| port | service | process | cwd |",
-        "|---:|---|---|---|",
+        "| port | service | stack | process | cwd |",
+        "|---:|---|---|---|---|",
     ]
     for service in audit.get("services", []):
         lines.append(
             f"| {service.get('port')} | {service.get('service')} | "
-            f"{service.get('process')} | `{service.get('cwd')}` |"
+            f"{service.get('stack') or '—'} | {service.get('process')} | `{service.get('cwd')}` |"
         )
     lines += ["", "## Findings", "", "| severity | kind | file:line | checker |", "|---|---|---|---|"]
     for finding in audit.get("findings", [])[:80]:

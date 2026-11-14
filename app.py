@@ -207,7 +207,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/state":
                 self.send_json(200, public_state())
             elif path == "/api/patterns":
-                self.send_json(200, {"rules": patterns.rule_catalog()})
+                self.send_json(200, {"rules": patterns.rule_catalog(), "coverage": patterns.coverage_matrix()})
             elif path == "/api/knowledge":
                 items = []
                 for file in sorted(KNOWLEDGE.glob("*.md")) if KNOWLEDGE.is_dir() else []:

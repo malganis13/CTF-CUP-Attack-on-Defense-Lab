@@ -108,7 +108,13 @@ python tools/build_demo.py     # пересобрать demo/audit.json из dem
 ./run.sh --demo
 ```
 
-`demo/src/` — три намеренно уязвимых сервиса (`notes`, `files`, `profile`).
+`demo/src/` — двенадцать сервисов на десяти языках: Python (`notes`, `files`,
+`profile`), Go (`gateway`), Rust (`rustapp`), JavaScript (`api`), PHP (`portal`),
+Java (`billing`), C# (`support`), C (`legacy`), Ruby (`lookup`), Lua (`luaapp`).
+Каждый — намеренно уязвимый исходник плюс манифест (`go.mod`, `Cargo.toml`,
+`package.json`, `composer.json`, `pom.xml`, `*.csproj`, `Gemfile`), чтобы демо
+показывало и находки, и определение стека.
+
 Они никогда не импортируются и не запускаются: сканер читает их как текст.
 Пересборка демо идёт через тот же движок, что и живой аудит, поэтому демо
 показывает ровно те правила, которые поставляются.
@@ -120,9 +126,32 @@ python tools/smoke.py
 ```
 
 Поднимает сервер в демо-режиме на свободном порту, проходит по всем ручкам API,
-проверяет находки, файлы, генератор, линтер и отчёт, затем гасит сервер.
-39 проверок, внешних зависимостей нет. Конфиг после прогона возвращается в
-исходное состояние.
+проверяет находки, языки, стеки, файлы, генератор, линтер и отчёт, затем гасит
+сервер. 59 проверок, внешних зависимостей нет. Конфиг после прогона возвращается
+в исходное состояние.
+
+## Языки
+
+Сканер не предполагает Python. Правила разложены по языкам через
+`Rule(languages=(...))`, файл без расширения определяется по shebang.
+
+| Язык | Что ищется |
+|---|---|
+| Python | SQL, IDOR, traversal, `shell=True`, pickle, SSTI, JWT, upload |
+| Go | SQL через `fmt.Sprintf`, `exec.Command`, `os.ReadFile`, роуты gin/chi/echo |
+| Rust | SQL через `format!`, `.arg(format!)`, `fs::read`, `unwrap`, axum/actix |
+| JS / TS | шаблонный SQL, `eval`, `fs.readFile`, `exec`, `innerHTML`, `jwt.decode` |
+| PHP | `$_GET` в запрос, `system`, `eval`, `include`, `unserialize`, upload |
+| Java / Kotlin | SQL конкатенацией, `new File(request)`, `Runtime.exec`, Spring |
+| C# | `SqlCommand` конкатенацией, `Process.Start`, `[HttpGet]` |
+| C / C++ | `strcpy`/`sprintf`/`gets`, `system`, `memcpy` без `sizeof` |
+| Ruby | `where("… #{…}")`, `system(params)`, `eval`, `YAML.load`, Rails |
+| Lua | `loadstring`, `os.execute` |
+
+Вкладка **Rules → Coverage** показывает это с числом правил на язык. Манифесты
+(`go.mod`, `Cargo.toml`, `package.json`, `composer.json`, `pom.xml`, `Gemfile`,
+`requirements.txt`, `*.csproj`, `Dockerfile`) читаются отдельно, стек сервиса
+виден в колонке **stack**: `go/gin`, `php/laravel`, `rust/axum`, `javascript/express`.
 
 ## Структура
 
@@ -133,6 +162,7 @@ ad-audit/
 │   ├── ssh.py             paramiko / системный ssh
 │   ├── audit.py           сбор и разбор, фиксированный скрипт
 │   ├── patterns.py        правила: sink'и, эндпоинты, флаги, чекер
+│   ├── languages.py       определение языка и стека по манифестам
 │   ├── generate.py        шаблоны проб и markdown-отчёт
 │   └── lint.py            AST-линтер проб
 ├── web/                   index.html, style.css, app.js
@@ -190,8 +220,8 @@ python tools/build_demo.py
 ## Ограничения
 
 - Правила — регулярки по строкам. Межфайловый поток данных не отслеживается.
-- Go/Rust/C++ покрыты общими правилами, без разбора AST.
-- Бинарники не анализируются: только исходники и конфиги.
+- AST-разбор есть только для Python (в линтере проб), сканер кода — регулярки.
+- Бинарники не анализируются: только исходники и манифесты.
 - `paramiko` без pinned host key: `AutoAddPolicy`, ключ не сверяется.
 - Пароль живёт в памяти процесса; в `config.json` не пишется.
 

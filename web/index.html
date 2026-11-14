@@ -86,6 +86,7 @@
       <div class="stat"><span id="sum-services">0</span><label>services</label></div>
       <div class="stat"><span id="sum-time">0</span><label>ms</label></div>
     </div>
+    <div class="langs" id="audit-langs"></div>
   </section>
 
   <!-- SERVICES -->
@@ -93,8 +94,8 @@
     <h2>Services</h2>
     <p class="hint">Listening sockets, owning process, working directory. Click a row to filter findings by that file tree.</p>
     <div class="table-wrap"><table id="services-table">
-      <thead><tr><th>port</th><th>proto</th><th>process</th><th>pid</th><th>cwd</th><th>cmdline</th></tr></thead>
-      <tbody><tr><td colspan="6" class="empty">run an audit</td></tr></tbody>
+      <thead><tr><th>port</th><th>proto</th><th>service</th><th>stack</th><th>pid</th><th>cwd</th><th>cmdline</th></tr></thead>
+      <tbody><tr><td colspan="7" class="empty">run an audit</td></tr></tbody>
     </table></div>
   </section>
 
@@ -172,10 +173,16 @@
   <!-- RULES -->
   <section class="panel" id="panel-rules">
     <h2>Rules</h2>
-    <p class="hint">Heuristics, not proofs. Each hit is a place to read, not a confirmed bug.</p>
+    <p class="hint">Heuristics, not proofs. Each hit is a place to read, not a confirmed bug. Language-specific rules only run on files detected as that language; the rest run everywhere.</p>
     <div class="table-wrap"><table id="rules-table">
-      <thead><tr><th>id</th><th>kind</th><th>severity</th><th>what it means</th><th>how to patch</th></tr></thead>
-      <tbody><tr><td colspan="5" class="empty">loading</td></tr></tbody>
+      <thead><tr><th>id</th><th>kind</th><th>severity</th><th>languages</th><th>what it means</th><th>how to patch</th></tr></thead>
+      <tbody><tr><td colspan="6" class="empty">loading</td></tr></tbody>
+    </table></div>
+    <h2 style="margin-top:22px">Coverage</h2>
+    <p class="hint">What the audit actually reads, per language. Everything else is detected as a file but only gets the generic rules.</p>
+    <div class="table-wrap"><table id="coverage-table">
+      <thead><tr><th>language</th><th>shown as</th><th>rules</th><th>depth</th></tr></thead>
+      <tbody><tr><td colspan="4" class="empty">loading</td></tr></tbody>
     </table></div>
   </section>
 

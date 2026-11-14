@@ -1,6 +1,6 @@
 {
   "host": "demo@vulnbox:22 (fixture)",
-  "generated_at": "2026-11-14T18:28:33Z",
+  "generated_at": "2026-11-14T18:42:47Z",
   "services": [
     {
       "port": 8081,
@@ -12,7 +12,12 @@
       "cwd": "/srv/notes",
       "cmdline": "/usr/bin/python3 /srv/notes/app.py",
       "service": "notes",
-      "language": "python"
+      "language": "python",
+      "stack": "python",
+      "languages": [
+        "python"
+      ],
+      "frameworks": []
     },
     {
       "port": 8082,
@@ -24,7 +29,12 @@
       "cwd": "/srv/files",
       "cmdline": "/usr/bin/python3 /srv/files/app.py",
       "service": "files",
-      "language": "python"
+      "language": "python",
+      "stack": "python",
+      "languages": [
+        "python"
+      ],
+      "frameworks": []
     },
     {
       "port": 8083,
@@ -36,15 +46,245 @@
       "cwd": "/srv/profile",
       "cmdline": "/usr/bin/python3 /srv/profile/app.py",
       "service": "profile",
-      "language": "python"
+      "language": "python",
+      "stack": "python",
+      "languages": [
+        "python"
+      ],
+      "frameworks": []
+    },
+    {
+      "port": 8084,
+      "proto": "tcp",
+      "state": "LISTEN",
+      "address": "0.0.0.0:8084",
+      "process": "gateway",
+      "pid": 1451,
+      "cwd": "/srv/gateway",
+      "cmdline": "/srv/gateway/gateway",
+      "service": "gateway",
+      "language": "go",
+      "stack": "go/gin",
+      "languages": [
+        "go"
+      ],
+      "frameworks": [
+        "gin"
+      ]
+    },
+    {
+      "port": 8085,
+      "proto": "tcp",
+      "state": "LISTEN",
+      "address": "0.0.0.0:8085",
+      "process": "php-fpm",
+      "pid": 1467,
+      "cwd": "/srv/portal",
+      "cmdline": "php-fpm: pool www",
+      "service": "portal",
+      "language": "php",
+      "stack": "php/laravel",
+      "languages": [
+        "php"
+      ],
+      "frameworks": [
+        "laravel"
+      ]
+    },
+    {
+      "port": 8086,
+      "proto": "tcp",
+      "state": "LISTEN",
+      "address": "0.0.0.0:8086",
+      "process": "node",
+      "pid": 1489,
+      "cwd": "/srv/api",
+      "cmdline": "node /srv/api/server.js",
+      "service": "api",
+      "language": "javascript",
+      "stack": "javascript/express",
+      "languages": [
+        "javascript"
+      ],
+      "frameworks": [
+        "express"
+      ]
+    },
+    {
+      "port": 8087,
+      "proto": "tcp",
+      "state": "LISTEN",
+      "address": "0.0.0.0:8087",
+      "process": "legacy",
+      "pid": 1502,
+      "cwd": "/srv/legacy",
+      "cmdline": "/srv/legacy/legacy 8087",
+      "service": "legacy",
+      "language": "c",
+      "stack": "c",
+      "languages": [
+        "c"
+      ],
+      "frameworks": []
+    },
+    {
+      "port": 8088,
+      "proto": "tcp",
+      "state": "LISTEN",
+      "address": "0.0.0.0:8088",
+      "process": "ruby",
+      "pid": 1518,
+      "cwd": "/srv/lookup",
+      "cmdline": "ruby /srv/lookup/app.rb",
+      "service": "lookup",
+      "language": "ruby",
+      "stack": "ruby/sinatra",
+      "languages": [
+        "ruby"
+      ],
+      "frameworks": [
+        "sinatra"
+      ]
+    },
+    {
+      "port": 8089,
+      "proto": "tcp",
+      "state": "LISTEN",
+      "address": "0.0.0.0:8089",
+      "process": "rustapp",
+      "pid": 1533,
+      "cwd": "/srv/rustapp",
+      "cmdline": "/srv/rustapp/rustapp",
+      "service": "rustapp",
+      "language": "rust",
+      "stack": "rust/axum",
+      "languages": [
+        "rust"
+      ],
+      "frameworks": [
+        "axum"
+      ]
+    },
+    {
+      "port": 8090,
+      "proto": "tcp",
+      "state": "LISTEN",
+      "address": "0.0.0.0:8090",
+      "process": "java",
+      "pid": 1544,
+      "cwd": "/srv/billing",
+      "cmdline": "java -jar /srv/billing/billing.jar",
+      "service": "billing",
+      "language": "java",
+      "stack": "java/spring",
+      "languages": [
+        "java"
+      ],
+      "frameworks": [
+        "spring"
+      ]
+    },
+    {
+      "port": 8091,
+      "proto": "tcp",
+      "state": "LISTEN",
+      "address": "0.0.0.0:8091",
+      "process": "dotnet",
+      "pid": 1556,
+      "cwd": "/srv/support",
+      "cmdline": "dotnet /srv/support/support.dll",
+      "service": "support",
+      "language": "csharp",
+      "stack": "csharp",
+      "languages": [
+        "csharp"
+      ],
+      "frameworks": []
+    },
+    {
+      "port": 8092,
+      "proto": "tcp",
+      "state": "LISTEN",
+      "address": "0.0.0.0:8092",
+      "process": "lua",
+      "pid": 1568,
+      "cwd": "/srv/luaapp",
+      "cmdline": "lua /srv/luaapp/handler.lua",
+      "service": "luaapp",
+      "language": "lua",
+      "stack": "lua",
+      "languages": [
+        "lua"
+      ],
+      "frameworks": []
     }
   ],
   "files": [
+    {
+      "path": "/srv/api/package.json",
+      "language": "json",
+      "lines": 10,
+      "findings": 0
+    },
+    {
+      "path": "/srv/api/server.js",
+      "language": "javascript",
+      "lines": 42,
+      "findings": 5
+    },
+    {
+      "path": "/srv/billing/BillingController.java",
+      "language": "java",
+      "lines": 37,
+      "findings": 3
+    },
+    {
+      "path": "/srv/billing/pom.xml",
+      "language": "text",
+      "lines": 12,
+      "findings": 0
+    },
     {
       "path": "/srv/files/app.py",
       "language": "python",
       "lines": 54,
       "findings": 5
+    },
+    {
+      "path": "/srv/gateway/go.mod",
+      "language": "text",
+      "lines": 8,
+      "findings": 0
+    },
+    {
+      "path": "/srv/gateway/main.go",
+      "language": "go",
+      "lines": 55,
+      "findings": 4
+    },
+    {
+      "path": "/srv/legacy/parser.c",
+      "language": "c",
+      "lines": 29,
+      "findings": 4
+    },
+    {
+      "path": "/srv/lookup/app.rb",
+      "language": "ruby",
+      "lines": 22,
+      "findings": 4
+    },
+    {
+      "path": "/srv/lookup/Gemfile",
+      "language": "text",
+      "lines": 5,
+      "findings": 0
+    },
+    {
+      "path": "/srv/luaapp/handler.lua",
+      "language": "lua",
+      "lines": 11,
+      "findings": 2
     },
     {
       "path": "/srv/notes/app.py",
@@ -53,18 +293,66 @@
       "findings": 9
     },
     {
+      "path": "/srv/portal/composer.json",
+      "language": "json",
+      "lines": 6,
+      "findings": 0
+    },
+    {
+      "path": "/srv/portal/index.php",
+      "language": "php",
+      "lines": 28,
+      "findings": 6
+    },
+    {
       "path": "/srv/profile/app.py",
       "language": "python",
       "lines": 73,
       "findings": 5
+    },
+    {
+      "path": "/srv/rustapp/Cargo.toml",
+      "language": "toml",
+      "lines": 9,
+      "findings": 0
+    },
+    {
+      "path": "/srv/rustapp/main.rs",
+      "language": "rust",
+      "lines": 39,
+      "findings": 3
+    },
+    {
+      "path": "/srv/support/support.csproj",
+      "language": "text",
+      "lines": 6,
+      "findings": 0
+    },
+    {
+      "path": "/srv/support/SupportController.cs",
+      "language": "csharp",
+      "lines": 26,
+      "findings": 2
     }
   ],
   "endpoints": [
     {
-      "path": "/download",
-      "method": "ANY",
-      "file": "/srv/files/app.py",
-      "line": 18
+      "path": "/invoice",
+      "method": "GET",
+      "file": "/srv/billing/BillingController.java",
+      "line": 21
+    },
+    {
+      "path": "/file",
+      "method": "GET",
+      "file": "/srv/billing/BillingController.java",
+      "line": 27
+    },
+    {
+      "path": "/ping",
+      "method": "GET",
+      "file": "/srv/billing/BillingController.java",
+      "line": 33
     },
     {
       "path": "/download",
@@ -74,21 +362,9 @@
     },
     {
       "path": "/view",
-      "method": "ANY",
-      "file": "/srv/files/app.py",
-      "line": 25
-    },
-    {
-      "path": "/view",
       "method": "GET",
       "file": "/srv/files/app.py",
       "line": 25
-    },
-    {
-      "path": "/browse",
-      "method": "ANY",
-      "file": "/srv/files/app.py",
-      "line": 32
     },
     {
       "path": "/browse",
@@ -98,21 +374,9 @@
     },
     {
       "path": "/upload",
-      "method": "ANY",
-      "file": "/srv/files/app.py",
-      "line": 39
-    },
-    {
-      "path": "/upload",
       "method": "POST",
       "file": "/srv/files/app.py",
       "line": 39
-    },
-    {
-      "path": "/go",
-      "method": "ANY",
-      "file": "/srv/files/app.py",
-      "line": 48
     },
     {
       "path": "/go",
@@ -121,10 +385,46 @@
       "line": 48
     },
     {
-      "path": "/notes/<int:note_id>",
-      "method": "ANY",
-      "file": "/srv/notes/app.py",
-      "line": 29
+      "path": "/notes/:id",
+      "method": "GET",
+      "file": "/srv/gateway/main.go",
+      "line": 51
+    },
+    {
+      "path": "/thumb",
+      "method": "GET",
+      "file": "/srv/gateway/main.go",
+      "line": 52
+    },
+    {
+      "path": "/file",
+      "method": "GET",
+      "file": "/srv/gateway/main.go",
+      "line": 53
+    },
+    {
+      "path": "/lookup",
+      "method": "GET",
+      "file": "/srv/lookup/app.rb",
+      "line": 6
+    },
+    {
+      "path": "/run",
+      "method": "GET",
+      "file": "/srv/lookup/app.rb",
+      "line": 12
+    },
+    {
+      "path": "/load",
+      "method": "GET",
+      "file": "/srv/lookup/app.rb",
+      "line": 16
+    },
+    {
+      "path": "/eval",
+      "method": "GET",
+      "file": "/srv/lookup/app.rb",
+      "line": 20
     },
     {
       "path": "/notes/<int:note_id>",
@@ -134,21 +434,9 @@
     },
     {
       "path": "/search",
-      "method": "ANY",
-      "file": "/srv/notes/app.py",
-      "line": 39
-    },
-    {
-      "path": "/search",
       "method": "GET",
       "file": "/srv/notes/app.py",
       "line": 39
-    },
-    {
-      "path": "/raw",
-      "method": "ANY",
-      "file": "/srv/notes/app.py",
-      "line": 47
     },
     {
       "path": "/raw",
@@ -158,21 +446,9 @@
     },
     {
       "path": "/preview",
-      "method": "ANY",
-      "file": "/srv/notes/app.py",
-      "line": 54
-    },
-    {
-      "path": "/preview",
       "method": "GET",
       "file": "/srv/notes/app.py",
       "line": 54
-    },
-    {
-      "path": "/hello",
-      "method": "ANY",
-      "file": "/srv/notes/app.py",
-      "line": 61
     },
     {
       "path": "/hello",
@@ -181,10 +457,22 @@
       "line": 61
     },
     {
-      "path": "/register",
-      "method": "ANY",
-      "file": "/srv/profile/app.py",
-      "line": 21
+      "path": "id",
+      "method": "PARAM",
+      "file": "/srv/portal/index.php",
+      "line": 6
+    },
+    {
+      "path": "thumb",
+      "method": "PARAM",
+      "file": "/srv/portal/index.php",
+      "line": 9
+    },
+    {
+      "path": "page",
+      "method": "PARAM",
+      "file": "/srv/portal/index.php",
+      "line": 13
     },
     {
       "path": "/register",
@@ -194,33 +482,15 @@
     },
     {
       "path": "/import",
-      "method": "ANY",
-      "file": "/srv/profile/app.py",
-      "line": 39
-    },
-    {
-      "path": "/import",
       "method": "POST",
       "file": "/srv/profile/app.py",
       "line": 39
     },
     {
       "path": "/me",
-      "method": "ANY",
-      "file": "/srv/profile/app.py",
-      "line": 46
-    },
-    {
-      "path": "/me",
       "method": "GET",
       "file": "/srv/profile/app.py",
       "line": 46
-    },
-    {
-      "path": "/avatar",
-      "method": "ANY",
-      "file": "/srv/profile/app.py",
-      "line": 53
     },
     {
       "path": "/avatar",
@@ -230,18 +500,225 @@
     },
     {
       "path": "/profile/<int:profile_id>",
-      "method": "ANY",
+      "method": "GET",
       "file": "/srv/profile/app.py",
       "line": 60
     },
     {
-      "path": "/profile/<int:profile_id>",
+      "path": "/lookup",
       "method": "GET",
-      "file": "/srv/profile/app.py",
-      "line": 60
+      "file": "/srv/rustapp/main.rs",
+      "line": 30
+    },
+    {
+      "path": "/thumb",
+      "method": "GET",
+      "file": "/srv/rustapp/main.rs",
+      "line": 31
+    },
+    {
+      "path": "/read",
+      "method": "GET",
+      "file": "/srv/rustapp/main.rs",
+      "line": 32
+    },
+    {
+      "path": "/ticket",
+      "method": "GET",
+      "file": "/srv/support/SupportController.cs",
+      "line": 13
+    },
+    {
+      "path": "/convert",
+      "method": "GET",
+      "file": "/srv/support/SupportController.cs",
+      "line": 20
     }
   ],
   "findings": [
+    {
+      "id": "71f88ef360",
+      "rule": "js-sql-template",
+      "kind": "SQL injection",
+      "severity": "high",
+      "file": "/srv/api/server.js",
+      "line": 14,
+      "snippet": "db.query(`SELECT id, title FROM notes WHERE title LIKE '%${term}%'`, (err, rows) => {",
+      "context": [
+        "",
+        "app.get(\"/search\", (req, res) => {",
+        "  const term = req.query.q;",
+        "  db.query(`SELECT id, title FROM notes WHERE title LIKE '%${term}%'`, (err, rows) => {",
+        "    if (err) return res.status(500).send(err.message);",
+        "    res.json(rows);",
+        "  });"
+      ],
+      "context_start": 11,
+      "why": "A query is assembled with a template literal. The interpolated value becomes SQL syntax.",
+      "patch": "Use placeholders: db.query('… WHERE id = $1', [id]).",
+      "checker_risk": "low",
+      "language": "javascript"
+    },
+    {
+      "id": "c16a05f673",
+      "rule": "path-sink",
+      "kind": "Path traversal",
+      "severity": "high",
+      "file": "/srv/api/server.js",
+      "line": 21,
+      "snippet": "fs.readFile(req.query.path, \"utf8\", (err, data) => {",
+      "context": [
+        "});",
+        "",
+        "app.get(\"/read\", (req, res) => {",
+        "  fs.readFile(req.query.path, \"utf8\", (err, data) => {",
+        "    if (err) return res.status(404).send(\"missing\");",
+        "    res.send(data);",
+        "  });"
+      ],
+      "context_start": 18,
+      "why": "A file read or send call receives request-controlled data.",
+      "patch": "Normalize, resolve symlinks, and check the prefix before reading or sending.",
+      "checker_risk": "low",
+      "language": "javascript"
+    },
+    {
+      "id": "1622db3bb8",
+      "rule": "js-exec-request",
+      "kind": "Command injection",
+      "severity": "high",
+      "file": "/srv/api/server.js",
+      "line": 28,
+      "snippet": "exec(\"convert \" + req.query.name + \" /tmp/api.png\", (err) => {",
+      "context": [
+        "});",
+        "",
+        "app.get(\"/run\", (req, res) => {",
+        "  exec(\"convert \" + req.query.name + \" /tmp/api.png\", (err) => {",
+        "    res.json({ ok: !err });",
+        "  });",
+        "});"
+      ],
+      "context_start": 25,
+      "why": "child_process receives request-derived data.",
+      "patch": "Use execFile with an argument array, and allowlist the program.",
+      "checker_risk": "low",
+      "language": "javascript"
+    },
+    {
+      "id": "816aa962f1",
+      "rule": "js-eval",
+      "kind": "Remote code execution",
+      "severity": "high",
+      "file": "/srv/api/server.js",
+      "line": 34,
+      "snippet": "res.json({ result: eval(req.body.expr) });",
+      "context": [
+        "});",
+        "",
+        "app.post(\"/eval\", (req, res) => {",
+        "  res.json({ result: eval(req.body.expr) });",
+        "});",
+        "",
+        "app.get(\"/me\", (req, res) => {"
+      ],
+      "context_start": 31,
+      "why": "eval() receives request data.",
+      "patch": "Remove eval. Parse JSON or dispatch through a lookup table.",
+      "checker_risk": "low",
+      "language": "javascript"
+    },
+    {
+      "id": "bbee24dde5",
+      "rule": "js-jwt-noverify",
+      "kind": "JWT verification bypass",
+      "severity": "high",
+      "file": "/srv/api/server.js",
+      "line": 38,
+      "snippet": "const claims = jwt.decode(req.headers.authorization);",
+      "context": [
+        "});",
+        "",
+        "app.get(\"/me\", (req, res) => {",
+        "  const claims = jwt.decode(req.headers.authorization);",
+        "  res.json({ claims });",
+        "});",
+        ""
+      ],
+      "context_start": 35,
+      "why": "jwt.decode is called without a key or algorithms list, so nothing is verified.",
+      "patch": "Use jwt.verify(token, key, { algorithms: ['HS256'] }).",
+      "checker_risk": "low",
+      "language": "javascript"
+    },
+    {
+      "id": "61490b046c",
+      "rule": "sql-format",
+      "kind": "SQL injection",
+      "severity": "high",
+      "file": "/srv/billing/BillingController.java",
+      "line": 24,
+      "snippet": "return statement.executeQuery(\"SELECT id, amount FROM invoices WHERE id = \" + id);",
+      "context": [
+        "    @GetMapping(\"/invoice\")",
+        "    public ResultSet invoice(@RequestParam String id) throws Exception {",
+        "        Statement statement = connection.createStatement();",
+        "        return statement.executeQuery(\"SELECT id, amount FROM invoices WHERE id = \" + id);",
+        "    }",
+        "",
+        "    @GetMapping(\"/file\")"
+      ],
+      "context_start": 21,
+      "why": "A query is assembled with +, % or .format(). User input becomes SQL syntax.",
+      "patch": "Use parameter binding. Allowlist column and sort names; they cannot be bound.",
+      "checker_risk": "low",
+      "language": "java"
+    },
+    {
+      "id": "fd79c69b3a",
+      "rule": "java-path",
+      "kind": "Path traversal",
+      "severity": "high",
+      "file": "/srv/billing/BillingController.java",
+      "line": 29,
+      "snippet": "File target = new File(request.getParameter(\"name\"));",
+      "context": [
+        "",
+        "    @GetMapping(\"/file\")",
+        "    public String file(@RequestParam String name) throws Exception {",
+        "        File target = new File(request.getParameter(\"name\"));",
+        "        return new String(java.nio.file.Files.readAllBytes(target.toPath()));",
+        "    }",
+        ""
+      ],
+      "context_start": 26,
+      "why": "A file path is built from request data.",
+      "patch": "Normalise and check the prefix; prefer an allowlist of names.",
+      "checker_risk": "low",
+      "language": "java"
+    },
+    {
+      "id": "70de9d4498",
+      "rule": "cmd-shell",
+      "kind": "Command injection",
+      "severity": "high",
+      "file": "/srv/billing/BillingController.java",
+      "line": 35,
+      "snippet": "Runtime.getRuntime().exec(\"ping -c 1 \" + host);",
+      "context": [
+        "",
+        "    @GetMapping(\"/ping\")",
+        "    public void ping(@RequestParam String host) throws Exception {",
+        "        Runtime.getRuntime().exec(\"ping -c 1 \" + host);",
+        "    }",
+        "}"
+      ],
+      "context_start": 32,
+      "why": "A shell or command executor is reachable from request data.",
+      "patch": "Avoid the shell; pass an argument vector. Allowlist the command and its arguments.",
+      "checker_risk": "low",
+      "language": "java"
+    },
     {
       "id": "99fc8d645e",
       "rule": "path-join",
@@ -333,6 +810,257 @@
       "patch": "Resolve the real path and verify it stays under the intended root; prefer an allowlist.",
       "checker_risk": "low",
       "language": "python"
+    },
+    {
+      "id": "365aae0f34",
+      "rule": "go-sql-sprintf",
+      "kind": "SQL injection",
+      "severity": "high",
+      "file": "/srv/gateway/main.go",
+      "line": 18,
+      "snippet": "query := fmt.Sprintf(\"SELECT title, body FROM notes WHERE id = %s\", id)",
+      "context": [
+        "func noteHandler(db *sql.DB) gin.HandlerFunc {",
+        "\treturn func(c *gin.Context) {",
+        "\t\tid := c.Param(\"id\")",
+        "\t\tquery := fmt.Sprintf(\"SELECT title, body FROM notes WHERE id = %s\", id)",
+        "\t\trows, err := db.Query(query)",
+        "\t\tif err != nil {",
+        "\t\t\tc.JSON(http.StatusInternalServerError, gin.H{\"error\": err.Error()})"
+      ],
+      "context_start": 15,
+      "why": "A query is assembled with fmt.Sprintf. The interpolated value becomes SQL syntax.",
+      "patch": "Pass values as query arguments: db.QueryRow(\"… WHERE id = $1\", id).",
+      "checker_risk": "low",
+      "language": "go"
+    },
+    {
+      "id": "a1275f8b25",
+      "rule": "go-exec-user",
+      "kind": "Command injection",
+      "severity": "high",
+      "file": "/srv/gateway/main.go",
+      "line": 31,
+      "snippet": "out, err := exec.Command(\"convert\", \"/srv/gateway/\"+name, \"/tmp/out.png\").Output()",
+      "context": [
+        "",
+        "func thumbHandler(c *gin.Context) {",
+        "\tname := c.Query(\"name\")",
+        "\tout, err := exec.Command(\"convert\", \"/srv/gateway/\"+name, \"/tmp/out.png\").Output()",
+        "\tif err != nil {",
+        "\t\tc.String(http.StatusInternalServerError, err.Error())",
+        "\t\treturn"
+      ],
+      "context_start": 28,
+      "why": "exec.Command receives request-controlled data.",
+      "patch": "Allowlist the binary and pass fixed arguments; never build the command from input.",
+      "checker_risk": "low",
+      "language": "go"
+    },
+    {
+      "id": "c73ff04f16",
+      "rule": "path-sink",
+      "kind": "Path traversal",
+      "severity": "high",
+      "file": "/srv/gateway/main.go",
+      "line": 40,
+      "snippet": "data, err := os.ReadFile(\"/srv/gateway/storage/\" + c.Query(\"file\"))",
+      "context": [
+        "}",
+        "",
+        "func fileHandler(c *gin.Context) {",
+        "\tdata, err := os.ReadFile(\"/srv/gateway/storage/\" + c.Query(\"file\"))",
+        "\tif err != nil {",
+        "\t\tc.String(http.StatusNotFound, \"missing\")",
+        "\t\treturn"
+      ],
+      "context_start": 37,
+      "why": "A file read or send call receives request-controlled data.",
+      "patch": "Normalize, resolve symlinks, and check the prefix before reading or sending.",
+      "checker_risk": "low",
+      "language": "go"
+    },
+    {
+      "id": "a9109d4a5c",
+      "rule": "c-unsafe-copy",
+      "kind": "Unsafe C string function",
+      "severity": "high",
+      "file": "/srv/legacy/parser.c",
+      "line": 10,
+      "snippet": "strcpy(buffer, name);",
+      "context": [
+        "    char buffer[64];",
+        "    char *out = malloc(128);",
+        "",
+        "    strcpy(buffer, name);",
+        "    sprintf(out, \"<b>%s</b>\", buffer);",
+        "    system(name);",
+        ""
+      ],
+      "context_start": 7,
+      "why": "An unbounded copy or format function writes into a fixed buffer.",
+      "patch": "Use strncpy/snprintf and check the return value, or a sized buffer type.",
+      "checker_risk": "low",
+      "language": "c"
+    },
+    {
+      "id": "3923486a85",
+      "rule": "c-unsafe-copy",
+      "kind": "Unsafe C string function",
+      "severity": "high",
+      "file": "/srv/legacy/parser.c",
+      "line": 11,
+      "snippet": "sprintf(out, \"<b>%s</b>\", buffer);",
+      "context": [
+        "    char *out = malloc(128);",
+        "",
+        "    strcpy(buffer, name);",
+        "    sprintf(out, \"<b>%s</b>\", buffer);",
+        "    system(name);",
+        "",
+        "    return out;"
+      ],
+      "context_start": 8,
+      "why": "An unbounded copy or format function writes into a fixed buffer.",
+      "patch": "Use strncpy/snprintf and check the return value, or a sized buffer type.",
+      "checker_risk": "low",
+      "language": "c"
+    },
+    {
+      "id": "3efa099a82",
+      "rule": "c-shell",
+      "kind": "Command injection",
+      "severity": "high",
+      "file": "/srv/legacy/parser.c",
+      "line": 12,
+      "snippet": "system(name);",
+      "context": [
+        "",
+        "    strcpy(buffer, name);",
+        "    sprintf(out, \"<b>%s</b>\", buffer);",
+        "    system(name);",
+        "",
+        "    return out;",
+        "}"
+      ],
+      "context_start": 9,
+      "why": "A shell or process launcher is called from C/C++ code.",
+      "patch": "Use execve with an argument vector; never pass input through a shell.",
+      "checker_risk": "low",
+      "language": "c"
+    },
+    {
+      "id": "8a364e447f",
+      "rule": "rb-sql-interp",
+      "kind": "SQL injection",
+      "severity": "high",
+      "file": "/srv/lookup/app.rb",
+      "line": 8,
+      "snippet": "rows = DB[:notes].where(\"id = #{id}\").all",
+      "context": [
+        "",
+        "get \"/lookup\" do",
+        "  id = params[:id]",
+        "  rows = DB[:notes].where(\"id = #{id}\").all",
+        "  rows.to_json",
+        "end",
+        ""
+      ],
+      "context_start": 5,
+      "why": "A query is built with string interpolation.",
+      "patch": "Use a placeholder: where('id = ?', id).",
+      "checker_risk": "low",
+      "language": "ruby"
+    },
+    {
+      "id": "63f296561b",
+      "rule": "rb-shell",
+      "kind": "Command injection",
+      "severity": "high",
+      "file": "/srv/lookup/app.rb",
+      "line": 13,
+      "snippet": "system(params[:cmd])",
+      "context": [
+        "end",
+        "",
+        "get \"/run\" do",
+        "  system(params[:cmd])",
+        "end",
+        "",
+        "get \"/load\" do"
+      ],
+      "context_start": 10,
+      "why": "A shell call receives request data.",
+      "patch": "Use the array form of system() with validated arguments.",
+      "checker_risk": "low",
+      "language": "ruby"
+    },
+    {
+      "id": "9d6ce4a507",
+      "rule": "deserialization",
+      "kind": "Unsafe deserialization",
+      "severity": "high",
+      "file": "/srv/lookup/app.rb",
+      "line": 17,
+      "snippet": "YAML.load(params[:blob])",
+      "context": [
+        "end",
+        "",
+        "get \"/load\" do",
+        "  YAML.load(params[:blob])",
+        "end",
+        "",
+        "get \"/eval\" do"
+      ],
+      "context_start": 14,
+      "why": "Untrusted data reaches a deserializer that can construct objects or execute code.",
+      "patch": "Use a data-only format (JSON), signed payloads, or an allowlist of classes.",
+      "checker_risk": "low",
+      "language": "ruby"
+    },
+    {
+      "id": "def93455ab",
+      "rule": "rb-eval",
+      "kind": "Remote code execution",
+      "severity": "high",
+      "file": "/srv/lookup/app.rb",
+      "line": 21,
+      "snippet": "eval(params[:expr])",
+      "context": [
+        "end",
+        "",
+        "get \"/eval\" do",
+        "  eval(params[:expr])",
+        "end"
+      ],
+      "context_start": 18,
+      "why": "eval receives request data.",
+      "patch": "Remove eval; dispatch through an explicit allowlist.",
+      "checker_risk": "low",
+      "language": "ruby"
+    },
+    {
+      "id": "6b5669dd50",
+      "rule": "lua-exec",
+      "kind": "Command injection",
+      "severity": "high",
+      "file": "/srv/luaapp/handler.lua",
+      "line": 8,
+      "snippet": "os.execute(\"date\")",
+      "context": [
+        "    local code = args.code",
+        "    local fn = loadstring(code)",
+        "    if fn then fn() end",
+        "    os.execute(\"date\")",
+        "end",
+        "",
+        "return handler"
+      ],
+      "context_start": 5,
+      "why": "os.execute runs a shell command.",
+      "patch": "Avoid the shell; validate every argument against an allowlist.",
+      "checker_risk": "low",
+      "language": "lua"
     },
     {
       "id": "8ed8a6dafa",
@@ -427,6 +1155,121 @@
       "language": "python"
     },
     {
+      "id": "b796c9bdf1",
+      "rule": "php-sql-concat",
+      "kind": "SQL injection",
+      "severity": "high",
+      "file": "/srv/portal/index.php",
+      "line": 6,
+      "snippet": "$sql = \"SELECT id, title FROM notes WHERE id = \" . $_GET['id'];",
+      "context": [
+        "",
+        "$pdo = new PDO('sqlite:/srv/portal/portal.sqlite3');",
+        "",
+        "$sql = \"SELECT id, title FROM notes WHERE id = \" . $_GET['id'];",
+        "$rows = $pdo->query($sql)->fetchAll();",
+        "",
+        "if (isset($_GET['thumb'])) {"
+      ],
+      "context_start": 3,
+      "why": "A SQL string is concatenated with request data.",
+      "patch": "Bind the value; never concatenate it into the statement.",
+      "checker_risk": "low",
+      "language": "php"
+    },
+    {
+      "id": "5031e71a72",
+      "rule": "php-shell",
+      "kind": "Command injection",
+      "severity": "high",
+      "file": "/srv/portal/index.php",
+      "line": 10,
+      "snippet": "system(\"convert \" . $_GET['thumb'] . \" /tmp/thumb.png\");",
+      "context": [
+        "$rows = $pdo->query($sql)->fetchAll();",
+        "",
+        "if (isset($_GET['thumb'])) {",
+        "    system(\"convert \" . $_GET['thumb'] . \" /tmp/thumb.png\");",
+        "}",
+        "",
+        "if (isset($_GET['page'])) {"
+      ],
+      "context_start": 7,
+      "why": "A shell function receives request data.",
+      "patch": "Use escapeshellarg on every argument, or drop the shell call entirely.",
+      "checker_risk": "low",
+      "language": "php"
+    },
+    {
+      "id": "86c4c4163c",
+      "rule": "php-include",
+      "kind": "Local file inclusion",
+      "severity": "high",
+      "file": "/srv/portal/index.php",
+      "line": 14,
+      "snippet": "include($_GET['page'] . '.php');",
+      "context": [
+        "}",
+        "",
+        "if (isset($_GET['page'])) {",
+        "    include($_GET['page'] . '.php');",
+        "}",
+        "",
+        "if (isset($_POST['code'])) {"
+      ],
+      "context_start": 11,
+      "why": "include/require takes a request-derived path.",
+      "patch": "Map an allowlisted key to a fixed file; never include a path from input.",
+      "checker_risk": "low",
+      "language": "php"
+    },
+    {
+      "id": "4aa0b0cc5b",
+      "rule": "php-eval",
+      "kind": "Remote code execution",
+      "severity": "high",
+      "file": "/srv/portal/index.php",
+      "line": 18,
+      "snippet": "eval($_POST['code']);",
+      "context": [
+        "}",
+        "",
+        "if (isset($_POST['code'])) {",
+        "    eval($_POST['code']);",
+        "}",
+        "",
+        "if (isset($_FILES['avatar'])) {"
+      ],
+      "context_start": 15,
+      "why": "eval() receives request data.",
+      "patch": "Remove eval. There is no safe way to run request data as PHP.",
+      "checker_risk": "low",
+      "language": "php"
+    },
+    {
+      "id": "b3b35192be",
+      "rule": "deserialization",
+      "kind": "Unsafe deserialization",
+      "severity": "high",
+      "file": "/srv/portal/index.php",
+      "line": 25,
+      "snippet": "$state = unserialize($_COOKIE['state']);",
+      "context": [
+        "    move_uploaded_file($_FILES['avatar']['tmp_name'], '/srv/portal/uploads/' . $_FILES['avatar']['name']);",
+        "}",
+        "",
+        "$state = unserialize($_COOKIE['state']);",
+        "",
+        "header('Content-Type: application/json');",
+        "echo json_encode(['rows' => $rows, 'state' => $state]);"
+      ],
+      "context_start": 22,
+      "why": "Untrusted data reaches a deserializer that can construct objects or execute code.",
+      "patch": "Use a data-only format (JSON), signed payloads, or an allowlist of classes.",
+      "checker_risk": "low",
+      "language": "php"
+    },
+    {
       "id": "0b51b60ff1",
       "rule": "mass-assign",
       "kind": "Mass assignment",
@@ -519,6 +1362,190 @@
       "language": "python"
     },
     {
+      "id": "f5b5ab3698",
+      "rule": "rust-sql-format",
+      "kind": "SQL injection",
+      "severity": "high",
+      "file": "/srv/rustapp/main.rs",
+      "line": 9,
+      "snippet": "let sql = format!(\"SELECT title FROM notes WHERE id = {}\", id);",
+      "context": [
+        "",
+        "async fn lookup(Query(params): Query<HashMap<String, String>>) -> String {",
+        "    let id = params.get(\"id\").cloned().unwrap_or_default();",
+        "    let sql = format!(\"SELECT title FROM notes WHERE id = {}\", id);",
+        "    let _ = sqlx::query(&sql).fetch_all(&pool()).await;",
+        "    \"ok\".to_string()",
+        "}"
+      ],
+      "context_start": 6,
+      "why": "A query is assembled with format!. The interpolated value becomes SQL syntax.",
+      "patch": "Use query arguments: sqlx::query(\"… WHERE id = $1\").bind(id).",
+      "checker_risk": "low",
+      "language": "rust"
+    },
+    {
+      "id": "66c0a29481",
+      "rule": "rust-command-format",
+      "kind": "Command injection",
+      "severity": "high",
+      "file": "/srv/rustapp/main.rs",
+      "line": 17,
+      "snippet": ".arg(format!(\"/srv/rustapp/{}\", name))",
+      "context": [
+        "async fn thumb(Query(params): Query<HashMap<String, String>>) -> String {",
+        "    let name = params.get(\"name\").cloned().unwrap_or_default();",
+        "    let out = Command::new(\"convert\")",
+        "        .arg(format!(\"/srv/rustapp/{}\", name))",
+        "        .arg(\"/tmp/rustapp.png\")",
+        "        .output();",
+        "    format!(\"{:?}\", out)"
+      ],
+      "context_start": 14,
+      "why": "Command::arg receives a formatted value.",
+      "patch": "Validate against an allowlist before passing an argument to a child process.",
+      "checker_risk": "low",
+      "language": "rust"
+    },
+    {
+      "id": "f3c2858130",
+      "rule": "rust-path",
+      "kind": "Path traversal",
+      "severity": "high",
+      "file": "/srv/rustapp/main.rs",
+      "line": 25,
+      "snippet": "fs::read_to_string(name).unwrap()",
+      "context": [
+        "",
+        "async fn read(Query(params): Query<HashMap<String, String>>) -> String {",
+        "    let name = params.get(\"file\").cloned().unwrap_or_default();",
+        "    fs::read_to_string(name).unwrap()",
+        "}",
+        "",
+        "fn router() -> Router {"
+      ],
+      "context_start": 22,
+      "why": "A filesystem read receives request-derived data.",
+      "patch": "Canonicalise and check the prefix; prefer an allowlist of file names.",
+      "checker_risk": "low",
+      "language": "rust"
+    },
+    {
+      "id": "efb01ff4e9",
+      "rule": "sql-format",
+      "kind": "SQL injection",
+      "severity": "high",
+      "file": "/srv/support/SupportController.cs",
+      "line": 16,
+      "snippet": "var command = new SqlCommand(\"SELECT body FROM tickets WHERE id = \" + id, new SqlConnection(connectionString));",
+      "context": [
+        "    [HttpGet(\"/ticket\")]",
+        "    public string Ticket(string id)",
+        "    {",
+        "        var command = new SqlCommand(\"SELECT body FROM tickets WHERE id = \" + id, new SqlConnection(connectionString));",
+        "        return command.ExecuteScalar()?.ToString() ?? \"\";",
+        "    }",
+        ""
+      ],
+      "context_start": 13,
+      "why": "A query is assembled with +, % or .format(). User input becomes SQL syntax.",
+      "patch": "Use parameter binding. Allowlist column and sort names; they cannot be bound.",
+      "checker_risk": "low",
+      "language": "csharp"
+    },
+    {
+      "id": "613ee5ef06",
+      "rule": "cs-process",
+      "kind": "Command injection",
+      "severity": "high",
+      "file": "/srv/support/SupportController.cs",
+      "line": 23,
+      "snippet": "Process.Start(\"/usr/bin/convert\", name);",
+      "context": [
+        "    [HttpGet(\"/convert\")]",
+        "    public string Convert(string name)",
+        "    {",
+        "        Process.Start(\"/usr/bin/convert\", name);",
+        "        return \"ok\";",
+        "    }",
+        "}"
+      ],
+      "context_start": 20,
+      "why": "Process.Start takes request-derived or user-supplied arguments.",
+      "patch": "Allowlist the executable and pass fixed arguments.",
+      "checker_risk": "low",
+      "language": "csharp"
+    },
+    {
+      "id": "b8ddeba0aa",
+      "rule": "sql-exec-var",
+      "kind": "SQL injection",
+      "severity": "medium",
+      "file": "/srv/gateway/main.go",
+      "line": 19,
+      "snippet": "rows, err := db.Query(query)",
+      "context": [
+        "\treturn func(c *gin.Context) {",
+        "\t\tid := c.Param(\"id\")",
+        "\t\tquery := fmt.Sprintf(\"SELECT title, body FROM notes WHERE id = %s\", id)",
+        "\t\trows, err := db.Query(query)",
+        "\t\tif err != nil {",
+        "\t\t\tc.JSON(http.StatusInternalServerError, gin.H{\"error\": err.Error()})",
+        "\t\t\treturn"
+      ],
+      "context_start": 16,
+      "why": "A query variable is executed directly. Trace where that variable was built.",
+      "patch": "Check the construction site; if it contains request data, bind parameters instead.",
+      "checker_risk": "low",
+      "language": "go"
+    },
+    {
+      "id": "27a262843f",
+      "rule": "c-memcpy-length",
+      "kind": "Unsafe memory copy",
+      "severity": "medium",
+      "file": "/srv/legacy/parser.c",
+      "line": 18,
+      "snippet": "memcpy(dst, src, len);",
+      "context": [
+        "}",
+        "",
+        "static void copy_blob(char *dst, const char *src, size_t len) {",
+        "    memcpy(dst, src, len);",
+        "}",
+        "",
+        "int main(int argc, char **argv) {"
+      ],
+      "context_start": 15,
+      "why": "memcpy is used without a sizeof bound in the surrounding lines.",
+      "patch": "Bound the length against the destination size: min(len, sizeof(dst)).",
+      "checker_risk": "low",
+      "language": "c"
+    },
+    {
+      "id": "cfbd6f1c05",
+      "rule": "lua-loadstring",
+      "kind": "Remote code execution",
+      "severity": "medium",
+      "file": "/srv/luaapp/handler.lua",
+      "line": 6,
+      "snippet": "local fn = loadstring(code)",
+      "context": [
+        "",
+        "function handler.run(args)",
+        "    local code = args.code",
+        "    local fn = loadstring(code)",
+        "    if fn then fn() end",
+        "    os.execute(\"date\")",
+        "end"
+      ],
+      "context_start": 3,
+      "why": "loadstring compiles a string at runtime.",
+      "patch": "Load a fixed chunk; never compile request data.",
+      "checker_risk": "low",
+      "language": "lua"
+    },
+    {
       "id": "cf12b0087b",
       "rule": "hardcoded-secret",
       "kind": "Hardcoded secret",
@@ -583,6 +1610,29 @@
       "patch": "Disable debug and reload in production; it often exposes a console.",
       "checker_risk": "low",
       "language": "python"
+    },
+    {
+      "id": "50ca5d4491",
+      "rule": "php-upload",
+      "kind": "Unsafe upload",
+      "severity": "medium",
+      "file": "/srv/portal/index.php",
+      "line": 22,
+      "snippet": "move_uploaded_file($_FILES['avatar']['tmp_name'], '/srv/portal/uploads/' . $_FILES['avatar']['name']);",
+      "context": [
+        "}",
+        "",
+        "if (isset($_FILES['avatar'])) {",
+        "    move_uploaded_file($_FILES['avatar']['tmp_name'], '/srv/portal/uploads/' . $_FILES['avatar']['name']);",
+        "}",
+        "",
+        "$state = unserialize($_COOKIE['state']);"
+      ],
+      "context_start": 19,
+      "why": "An uploaded file is moved into place without a name or type check.",
+      "patch": "Generate the stored name, allowlist extensions, store outside the web root.",
+      "checker_risk": "low",
+      "language": "php"
     },
     {
       "id": "01567cc380",
@@ -678,11 +1728,151 @@
     }
   ],
   "counts": {
-    "high": 12,
-    "medium": 4,
+    "high": 41,
+    "medium": 8,
     "low": 1,
     "info": 2
   },
+  "languages": [
+    {
+      "language": "python",
+      "files": 3
+    },
+    {
+      "language": "c",
+      "files": 1
+    },
+    {
+      "language": "csharp",
+      "files": 1
+    },
+    {
+      "language": "go",
+      "files": 1
+    },
+    {
+      "language": "java",
+      "files": 1
+    },
+    {
+      "language": "javascript",
+      "files": 1
+    },
+    {
+      "language": "lua",
+      "files": 1
+    },
+    {
+      "language": "php",
+      "files": 1
+    },
+    {
+      "language": "ruby",
+      "files": 1
+    },
+    {
+      "language": "rust",
+      "files": 1
+    }
+  ],
+  "stacks": [
+    {
+      "directory": "/srv/api",
+      "languages": [
+        "javascript"
+      ],
+      "frameworks": [
+        "express"
+      ]
+    },
+    {
+      "directory": "/srv/billing",
+      "languages": [
+        "java"
+      ],
+      "frameworks": [
+        "spring"
+      ]
+    },
+    {
+      "directory": "/srv/files",
+      "languages": [
+        "python"
+      ],
+      "frameworks": []
+    },
+    {
+      "directory": "/srv/gateway",
+      "languages": [
+        "go"
+      ],
+      "frameworks": [
+        "gin"
+      ]
+    },
+    {
+      "directory": "/srv/legacy",
+      "languages": [
+        "c"
+      ],
+      "frameworks": []
+    },
+    {
+      "directory": "/srv/lookup",
+      "languages": [
+        "ruby"
+      ],
+      "frameworks": [
+        "sinatra"
+      ]
+    },
+    {
+      "directory": "/srv/luaapp",
+      "languages": [
+        "lua"
+      ],
+      "frameworks": []
+    },
+    {
+      "directory": "/srv/notes",
+      "languages": [
+        "python"
+      ],
+      "frameworks": []
+    },
+    {
+      "directory": "/srv/portal",
+      "languages": [
+        "php"
+      ],
+      "frameworks": [
+        "laravel"
+      ]
+    },
+    {
+      "directory": "/srv/profile",
+      "languages": [
+        "python"
+      ],
+      "frameworks": []
+    },
+    {
+      "directory": "/srv/rustapp",
+      "languages": [
+        "rust"
+      ],
+      "frameworks": [
+        "axum"
+      ]
+    },
+    {
+      "directory": "/srv/support",
+      "languages": [
+        "csharp"
+      ],
+      "frameworks": []
+    }
+  ],
   "checker": {
     "refs": [
       {
@@ -726,13 +1916,13 @@
       "/srv/files",
       "/srv/profile"
     ],
-    "source_files": 3,
+    "source_files": 19,
     "duration_ms": 812,
     "commands": [
       "fixture",
       "no ssh"
     ],
-    "findings_total": 19,
+    "findings_total": 52,
     "demo": true
   },
   "os": [

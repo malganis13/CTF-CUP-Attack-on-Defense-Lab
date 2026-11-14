@@ -87,7 +87,7 @@ def main() -> int:
         audit = get("/api/last")
         check("audit returned", isinstance(audit.get("findings"), list))
         check("findings present", len(audit["findings"]) > 0)
-        check("services present", len(audit.get("services", [])) == 3)
+        check("services present", len(audit.get("services", [])) >= 8, str(len(audit.get("services", []))))
         check("counts match", sum(audit["counts"].values()) == len(audit["findings"]))
         check(
             "every finding has file+line",
@@ -97,9 +97,25 @@ def main() -> int:
         for kind in ("SQL injection", "Path traversal", "IDOR / BOLA", "Command injection"):
             check(f"detects {kind}", kind in kinds)
 
+        languages = {item["language"] for item in audit.get("languages", [])}
+        for language in ("python", "go", "rust", "javascript", "php", "java", "csharp", "c", "ruby", "lua"):
+            check(f"scans {language}", language in languages, str(sorted(languages)))
+
+        stacks = {item.get("stack", "") for item in audit["services"]}
+        for stack in ("python", "go/gin", "php/laravel", "javascript/express", "rust/axum", "java/spring", "ruby/sinatra"):
+            check(f"stack {stack}", stack in stacks, str(sorted(stacks)))
+
+        check(
+            "language rules stayed in their lane",
+            all(item.get("language") for item in audit["findings"]),
+        )
+
         print("patterns")
         catalog = get("/api/patterns")
         check("catalog size", len(catalog["rules"]) == state["rules"])
+        check("coverage table", len(catalog.get("coverage", [])) >= 9, str(len(catalog.get("coverage", []))))
+        go_rules = [item for item in catalog["rules"] if "go" in item["languages"]]
+        check("go has rules", len(go_rules) >= 3, str(len(go_rules)))
 
         print("files")
         listing = get("/api/files?path=/srv")

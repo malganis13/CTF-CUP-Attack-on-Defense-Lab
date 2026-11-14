@@ -58,6 +58,114 @@ SERVICES = [
         "service": "profile",
         "language": "python",
     },
+    {
+        "port": 8084,
+        "proto": "tcp",
+        "state": "LISTEN",
+        "address": "0.0.0.0:8084",
+        "process": "gateway",
+        "pid": 1451,
+        "cwd": "/srv/gateway",
+        "cmdline": "/srv/gateway/gateway",
+        "service": "gateway",
+        "language": "go",
+    },
+    {
+        "port": 8085,
+        "proto": "tcp",
+        "state": "LISTEN",
+        "address": "0.0.0.0:8085",
+        "process": "php-fpm",
+        "pid": 1467,
+        "cwd": "/srv/portal",
+        "cmdline": "php-fpm: pool www",
+        "service": "portal",
+        "language": "php",
+    },
+    {
+        "port": 8086,
+        "proto": "tcp",
+        "state": "LISTEN",
+        "address": "0.0.0.0:8086",
+        "process": "node",
+        "pid": 1489,
+        "cwd": "/srv/api",
+        "cmdline": "node /srv/api/server.js",
+        "service": "api",
+        "language": "javascript",
+    },
+    {
+        "port": 8087,
+        "proto": "tcp",
+        "state": "LISTEN",
+        "address": "0.0.0.0:8087",
+        "process": "legacy",
+        "pid": 1502,
+        "cwd": "/srv/legacy",
+        "cmdline": "/srv/legacy/legacy 8087",
+        "service": "legacy",
+        "language": "c",
+    },
+    {
+        "port": 8088,
+        "proto": "tcp",
+        "state": "LISTEN",
+        "address": "0.0.0.0:8088",
+        "process": "ruby",
+        "pid": 1518,
+        "cwd": "/srv/lookup",
+        "cmdline": "ruby /srv/lookup/app.rb",
+        "service": "lookup",
+        "language": "ruby",
+    },
+    {
+        "port": 8089,
+        "proto": "tcp",
+        "state": "LISTEN",
+        "address": "0.0.0.0:8089",
+        "process": "rustapp",
+        "pid": 1533,
+        "cwd": "/srv/rustapp",
+        "cmdline": "/srv/rustapp/rustapp",
+        "service": "rustapp",
+        "language": "rust",
+    },
+    {
+        "port": 8090,
+        "proto": "tcp",
+        "state": "LISTEN",
+        "address": "0.0.0.0:8090",
+        "process": "java",
+        "pid": 1544,
+        "cwd": "/srv/billing",
+        "cmdline": "java -jar /srv/billing/billing.jar",
+        "service": "billing",
+        "language": "java",
+    },
+    {
+        "port": 8091,
+        "proto": "tcp",
+        "state": "LISTEN",
+        "address": "0.0.0.0:8091",
+        "process": "dotnet",
+        "pid": 1556,
+        "cwd": "/srv/support",
+        "cmdline": "dotnet /srv/support/support.dll",
+        "service": "support",
+        "language": "csharp",
+    },
+    {
+        "port": 8092,
+        "proto": "tcp",
+        "state": "LISTEN",
+        "address": "0.0.0.0:8092",
+        "process": "lua",
+        "pid": 1568,
+        "cwd": "/srv/luaapp",
+        "cmdline": "lua /srv/luaapp/handler.lua",
+        "service": "luaapp",
+        "language": "lua",
+    },
 ]
 
 # Audit paths are the paths a target would show, not the fixture paths.
@@ -66,10 +174,13 @@ PREFIX = {}
 
 def load_sources() -> dict[str, str]:
     sources: dict[str, str] = {}
-    for file in sorted(SRC.rglob("*.py")):
-        relative = file.relative_to(SRC).as_posix()
-        service = relative.split("/")[0]
-        sources[f"/srv/{relative}"] = file.read_text(encoding="utf-8")
+    for file in sorted(SRC.rglob("*")):
+        if not file.is_file():
+            continue
+        relative = file.relative_to(SRC)
+        if "__pycache__" in relative.parts:
+            continue
+        sources[f"/srv/{relative.as_posix()}"] = file.read_text(encoding="utf-8", errors="replace")
     return sources
 
 

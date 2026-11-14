@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 from . import patterns
+from .languages import detect_stacks, stack_for
 from .ssh import BaseSSH
 
 AUDIT_SCRIPT = r'''
@@ -50,14 +51,27 @@ echo __END__
 
 FIND_COMMAND = (
     "find {roots} -maxdepth 5 -type f \\("
-    " -name '*.py' -o -name '*.go' -o -name '*.rs' -o -name '*.js' -o -name '*.ts'"
-    " -o -name '*.php' -o -name '*.rb' -o -name '*.java' -o -name '*.c' -o -name '*.cc'"
-    " -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' -o -name '*.lua'"
-    " -o -name '*.yml' -o -name '*.yaml' -o -name '*.toml'"
+    " -name '*.py' -o -name '*.go' -o -name '*.rs' -o -name '*.js' -o -name '*.mjs' -o -name '*.ts'"
+    " -o -name '*.jsx' -o -name '*.tsx' -o -name '*.vue' -o -name '*.svelte'"
+    " -o -name '*.php' -o -name '*.rb' -o -name '*.java' -o -name '*.kt' -o -name '*.cs'"
+    " -o -name '*.c' -o -name '*.cc' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp'"
+    " -o -name '*.lua' -o -name '*.pl' -o -name '*.sh' -o -name '*.sql' -o -name '*.proto'"
+    " -o -name '*.yml' -o -name '*.yaml' -o -name '*.toml' -o -name '*.ini'"
     " -o -name 'Dockerfile' -o -name '*.service' -o -name '*.conf'"
     " \\) 2>/dev/null"
     " | grep -vE '/(node_modules|\\.git|vendor|target|dist|build|__pycache__|site-packages|\\.venv)/'"
-    " | head -300"
+    " | head -400"
+)
+
+MANIFEST_COMMAND = (
+    "find {roots} -maxdepth 5 -type f \\("
+    " -name 'go.mod' -o -name 'Cargo.toml' -o -name 'package.json' -o -name 'composer.json'"
+    " -o -name 'pom.xml' -o -name 'build.gradle' -o -name 'build.gradle.kts' -o -name 'Gemfile'"
+    " -o -name 'requirements.txt' -o -name 'pyproject.toml' -o -name 'Pipfile' -o -name '*.csproj'"
+    " -o -name 'Dockerfile' -o -name 'docker-compose.yml' -o -name 'docker-compose.yaml'"
+    " \\) 2>/dev/null"
+    " | grep -vE '/(node_modules|\\.git|vendor|target|__pycache__|site-packages|\\.venv)/'"
+    " | head -80"
 )
 
 DEFAULT_ROOTS = ("/opt", "/srv", "/app", "/var/www", "/home", "/root", "/data")
@@ -153,9 +167,11 @@ def analyze_sources(sources: dict[str, str], services: list[dict], host: str) ->
     literals: set[str] = set()
     checker_refs: list[str] = []
     storage: set[str] = set()
+    language_counts: dict[str, int] = {}
 
     for path, text in sources.items():
-        language = patterns.language_of(path)
+        language = patterns.language_of(path, text)
+        language_counts[language] = language_counts.get(language, 0) + 1
         file_findings = patterns.scan_text(path, text, language)
         findings.extend(file_findings)
         endpoints.extend(patterns.map_endpoints(path, text))
@@ -170,18 +186,39 @@ def analyze_sources(sources: dict[str, str], services: list[dict], host: str) ->
             "findings": len(file_findings),
         })
 
+    stacks = detect_stacks(sources)
+    enriched_services = []
+    for service in services:
+        item = dict(service)
+        stack = stack_for(item.get("cwd", ""), stacks)
+        item["stack"] = stack["label"]
+        item["languages"] = stack["languages"]
+        item["frameworks"] = stack["frameworks"]
+        enriched_services.append(item)
+
     findings.sort(key=lambda item: (patterns.SEVERITY_ORDER.get(item["severity"], 9), item["file"], item["line"]))
     counts = {severity: sum(1 for item in findings if item["severity"] == severity)
               for severity in ("high", "medium", "low", "info")}
 
+    notable = {"text", "json", "yaml", "toml", "ini", "docker", "systemd"}
     return {
         "host": host,
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "services": services,
+        "services": enriched_services,
         "files": files,
         "endpoints": endpoints,
         "findings": findings,
         "counts": counts,
+        "languages": [
+            {"language": name, "files": count}
+            for name, count in sorted(language_counts.items(), key=lambda pair: (-pair[1], pair[0]))
+            if name not in notable
+        ],
+        "stacks": [
+            {"directory": directory, **entry}
+            for directory, entry in sorted(stacks.items())
+            if entry["languages"] or entry["frameworks"]
+        ],
         "checker": {
             "refs": [item for item in findings if item["rule"] == "checker-ref"],
             "mentions": sorted(set(checker_refs))[:50],
@@ -219,7 +256,15 @@ class Audit:
         roots = [root for root in roots if root.startswith("/")]
         command = FIND_COMMAND.format(roots=" ".join(shlex.quote(root) for root in roots))
         out = self._run(command, timeout=40)
-        return [line.strip() for line in out.splitlines() if line.strip().startswith("/")][:300]
+        return [line.strip() for line in out.splitlines() if line.strip().startswith("/")][:400]
+
+    def _find_manifests(self, roots: list[str]) -> list[str]:
+        roots = [root for root in roots if root.startswith("/")]
+        if not roots:
+            return []
+        command = MANIFEST_COMMAND.format(roots=" ".join(shlex.quote(root) for root in roots))
+        out = self._run(command, timeout=30)
+        return [line.strip() for line in out.splitlines() if line.strip().startswith("/")][:80]
 
     def _read_files(self, paths: list[str]) -> dict[str, str]:
         if not paths:
@@ -257,8 +302,9 @@ class Audit:
         self.log(f"services: {len(services)}; roots: {', '.join(roots[:8])}")
         self.log("listing source files")
         files = self._find_files(roots)
-        self.log(f"source files: {len(files)}")
-        sources = self._read_files(files)
+        manifests = self._find_manifests(roots)
+        self.log(f"source files: {len(files)}; manifests: {len(manifests)}")
+        sources = self._read_files(sorted(set(files) | set(manifests)))
         self.log(f"read {len(sources)} files; scanning")
         result = analyze_sources(sources, services, self.ssh.label())
         result["os"] = [line for line in sections.get("os", "").splitlines() if line.strip()][:4]

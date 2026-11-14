@@ -225,6 +225,12 @@ function renderSummary() {
   $("#sum-endpoints").textContent = (audit.endpoints || []).length;
   $("#sum-services").textContent = (audit.services || []).length;
   $("#sum-time").textContent = (audit.meta && audit.meta.duration_ms) || 0;
+
+  const langs = $("#audit-langs");
+  langs.textContent = "";
+  (audit.languages || []).forEach((entry) => {
+    langs.appendChild(el("span", "pill", `${entry.language} ×${entry.files}`));
+  });
 }
 
 /* ---------- services ---------- */
@@ -236,7 +242,7 @@ function renderServices() {
   if (!services.length) {
     const row = el("tr");
     const cell = el("td", "empty", "no listening services found");
-    cell.colSpan = 6;
+    cell.colSpan = 7;
     row.appendChild(cell);
     body.appendChild(row);
     return;
@@ -246,6 +252,14 @@ function renderServices() {
     row.appendChild(el("td", "cell-mono", service.port));
     row.appendChild(el("td", "cell-mono", service.proto));
     row.appendChild(el("td", "cell-mono", service.service || service.process || "?"));
+    const stackCell = el("td");
+    if (service.stack) {
+      stackCell.appendChild(el("span", "pill", service.stack));
+    } else {
+      stackCell.textContent = "—";
+      stackCell.className = "empty";
+    }
+    row.appendChild(stackCell);
     row.appendChild(el("td", "cell-mono", service.pid ?? "—"));
     row.appendChild(el("td", "cell-mono", service.cwd || "—"));
     const cmd = el("td", "cell-mono", service.cmdline || "—");
@@ -588,9 +602,21 @@ async function loadRules() {
       const sev = el("td");
       sev.appendChild(el("span", "pill " + rule.severity, rule.severity));
       row.appendChild(sev);
+      row.appendChild(el("td", "cell-mono", (rule.languages || ["any"]).join(", ")));
       row.appendChild(el("td", null, rule.why));
       row.appendChild(el("td", null, rule.patch));
       body.appendChild(row);
+    });
+
+    const coverage = $("#coverage-table tbody");
+    coverage.textContent = "";
+    (result.coverage || []).forEach((entry) => {
+      const row = el("tr");
+      row.appendChild(el("td", "cell-mono", entry.language));
+      row.appendChild(el("td", "cell-mono", entry.shown_as));
+      row.appendChild(el("td", "cell-mono", entry.rules));
+      row.appendChild(el("td", null, entry.depth));
+      coverage.appendChild(row);
     });
   } catch (error) {
     console.error(error);
