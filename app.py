@@ -21,9 +21,9 @@ from urllib.parse import parse_qs, urlparse
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from adkit import __version__, patterns
+from adkit import __version__, patterns, probe
 from adkit.audit import Audit, analyze_sources
-from adkit.generate import generate_probe, generate_report
+from adkit.generate import generate_probe, generate_report, pick_endpoint
 from adkit.ssh import SSHError, backend_name, connect, test_connection
 
 BASE = Path(__file__).resolve().parent
@@ -88,6 +88,7 @@ def public_state() -> dict:
         "has_password": bool(SESSION.get("password")),
         "has_audit": SESSION.get("last_audit") is not None,
         "rules": len(patterns.RULES),
+        "budget": probe.BUDGET.peek(),
     }
 
 
@@ -292,7 +293,27 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 service = body.get("service") or "service"
                 endpoint = body.get("endpoint") or None
-                self.send_json(200, generate_probe(finding, service, endpoint))
+                port = int(body.get("port") or 80)
+                self.send_json(200, generate_probe(finding, service, endpoint, port, audit.get("endpoints")))
+            elif path == "/api/probe":
+                audit = SESSION.get("last_audit")
+                if not audit:
+                    self.send_json(400, {"error": "run an audit first"})
+                    return
+                finding_id = body.get("id", "")
+                finding = next((item for item in audit.get("findings", []) if item.get("id") == finding_id), None)
+                if not finding:
+                    self.send_json(404, {"error": "finding not found"})
+                    return
+                port = int(body.get("port") or 80)
+                endpoint = body.get("endpoint") or pick_endpoint(finding, audit.get("endpoints"))
+                base = (body.get("base") or "").strip()
+                if not base:
+                    host = SESSION["config"].get("target", {}).get("host") or "127.0.0.1"
+                    base = f"http://{host}:{port}"
+                result = probe.run_for(finding, endpoint, base, port)
+                result["budget"] = probe.BUDGET.peek()
+                self.send_json(200, result)
             elif path == "/api/report":
                 audit = SESSION.get("last_audit")
                 if not audit:
@@ -301,6 +322,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {"markdown": generate_report(audit)})
             else:
                 self.send_json(404, {"error": "not found"})
+        except probe.BudgetExhausted as exc:
+            self.send_json(429, {
+                "error": f"бюджет запросов исчерпан, повтор через {int(exc.retry_after) + 1} с",
+                "retry_after": round(exc.retry_after, 1),
+            })
         except SSHError as exc:
             self.send_json(502, {"error": str(exc)})
         except Exception as exc:  # noqa: BLE001 - surfaced to the UI

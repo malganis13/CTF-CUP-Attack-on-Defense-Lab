@@ -1,205 +1,226 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AD Audit</title>
+<title>Аудит A/D</title>
 <link rel="stylesheet" href="/web/style.css">
 </head>
 <body>
 <header class="top">
   <div class="brand">
     <span class="mark">AD</span>
-    <span class="title">audit</span>
+    <span class="title">аудит</span>
     <span class="ver" id="version">—</span>
   </div>
   <div class="badges">
-    <span class="badge" id="badge-backend">backend: —</span>
-    <span class="badge demo" id="badge-demo" hidden>demo mode</span>
-    <span class="badge off" id="badge-target">not connected</span>
-    <span class="badge" id="badge-counts">no audit</span>
+    <span class="badge" id="badge-backend">бэкенд: —</span>
+    <span class="badge demo" id="badge-demo" hidden>демо-режим</span>
+    <span class="badge off" id="badge-target">не подключено</span>
+    <span class="badge" id="badge-counts">аудита нет</span>
   </div>
 </header>
 
 <nav class="tabs" id="tabs">
-  <button data-tab="connect" class="active">Connect</button>
-  <button data-tab="audit">Audit</button>
-  <button data-tab="services">Services</button>
-  <button data-tab="findings">Findings</button>
-  <button data-tab="files">Files</button>
-  <button data-tab="generator">Generator</button>
-  <button data-tab="report">Report</button>
-  <button data-tab="rules">Rules</button>
-  <button data-tab="knowledge">Knowledge</button>
+  <button data-tab="connect" class="active">Подключение</button>
+  <button data-tab="audit">Аудит</button>
+  <button data-tab="services">Сервисы</button>
+  <button data-tab="findings">Находки</button>
+  <button data-tab="files">Файлы</button>
+  <button data-tab="generator">Генератор</button>
+  <button data-tab="report">Отчёт</button>
+  <button data-tab="rules">Правила</button>
+  <button data-tab="knowledge">База знаний</button>
 </nav>
 
 <main>
-  <!-- CONNECT -->
+  <!-- ПОДКЛЮЧЕНИЕ -->
   <section class="panel active" id="panel-connect">
-    <h2>Target</h2>
-    <p class="hint">Credentials stay in this process. Nothing is written to disk except the target block in <code>config.json</code>.</p>
+    <h2>Цель</h2>
+    <p class="hint">Данные доступа живут в памяти процесса. На диск пишется только блок цели в <code>config.json</code>.</p>
     <div class="grid">
-      <label>host<input id="cfg-host" placeholder="10.10.1.42" autocomplete="off"></label>
-      <label>port<input id="cfg-port" type="number" value="22" min="1" max="65535"></label>
-      <label>user<input id="cfg-user" placeholder="root" autocomplete="off"></label>
-      <label>auth
+      <label>хост<input id="cfg-host" placeholder="10.10.1.42" autocomplete="off"></label>
+      <label>порт<input id="cfg-port" type="number" value="22" min="1" max="65535"></label>
+      <label>пользователь<input id="cfg-user" placeholder="root" autocomplete="off"></label>
+      <label>вход
         <select id="cfg-auth">
-          <option value="key">key / agent</option>
-          <option value="password">password</option>
+          <option value="key">ключ / агент</option>
+          <option value="password">пароль</option>
         </select>
       </label>
-      <label class="wide">key path<input id="cfg-key" placeholder="C:\Users\you\.ssh\id_ed25519" autocomplete="off"></label>
-      <label class="wide" id="password-row" hidden>password<input id="cfg-password" type="password" autocomplete="new-password" placeholder="kept in memory only"></label>
+      <label class="wide">путь к ключу<input id="cfg-key" placeholder="C:\Users\you\.ssh\id_ed25519" autocomplete="off"></label>
+      <label class="wide" id="password-row" hidden>пароль<input id="cfg-password" type="password" autocomplete="new-password" placeholder="только в памяти"></label>
     </div>
     <div class="row">
-      <button id="btn-save" class="primary">Save</button>
-      <button id="btn-test">Test connection</button>
+      <button id="btn-save" class="primary">Сохранить</button>
+      <button id="btn-test">Проверить связь</button>
       <span class="status" id="connect-status"></span>
     </div>
     <pre class="log" id="connect-log" hidden></pre>
     <div class="callout">
-      <b>Read-only contract.</b> The audit runs
+      <b>Только чтение.</b> Аудит выполняет
       <code>id</code>, <code>uname</code>, <code>ss</code>, <code>ps</code>,
       <code>systemctl list-units</code>, <code>docker ps</code>,
       <code>kubectl get</code>, <code>crontab -l</code>, <code>env</code>,
-      <code>ls</code>, <code>find</code>, <code>sed -n</code>. It never writes,
-      never restarts, never touches <code>/_checker/*</code>.
+      <code>ls</code>, <code>find</code>, <code>sed -n</code>. Ничего не пишет,
+      ничего не перезапускает, не касается <code>/_checker/*</code>.
     </div>
   </section>
 
-  <!-- AUDIT -->
+  <!-- АУДИТ -->
   <section class="panel" id="panel-audit">
-    <h2>Audit</h2>
+    <h2>Аудит</h2>
     <div class="row">
-      <button id="btn-audit" class="primary">Run read-only audit</button>
+      <button id="btn-audit" class="primary">Запустить аудит</button>
       <span class="status" id="audit-status"></span>
     </div>
     <div class="progress"><div class="bar" id="audit-bar"></div></div>
-    <pre class="log" id="audit-log">idle</pre>
+    <pre class="log" id="audit-log">простой</pre>
     <div id="audit-summary" class="summary" hidden>
       <div class="stat"><span id="sum-high" class="sev high">0</span><label>high</label></div>
       <div class="stat"><span id="sum-medium" class="sev medium">0</span><label>medium</label></div>
       <div class="stat"><span id="sum-low" class="sev low">0</span><label>low</label></div>
       <div class="stat"><span id="sum-info" class="sev info">0</span><label>info</label></div>
-      <div class="stat"><span id="sum-files">0</span><label>files</label></div>
-      <div class="stat"><span id="sum-endpoints">0</span><label>endpoints</label></div>
-      <div class="stat"><span id="sum-services">0</span><label>services</label></div>
-      <div class="stat"><span id="sum-time">0</span><label>ms</label></div>
+      <div class="stat"><span id="sum-files">0</span><label>файлов</label></div>
+      <div class="stat"><span id="sum-endpoints">0</span><label>ручек</label></div>
+      <div class="stat"><span id="sum-services">0</span><label>сервисов</label></div>
+      <div class="stat"><span id="sum-time">0</span><label>мс</label></div>
     </div>
     <div class="langs" id="audit-langs"></div>
   </section>
 
-  <!-- SERVICES -->
+  <!-- СЕРВИСЫ -->
   <section class="panel" id="panel-services">
-    <h2>Services</h2>
-    <p class="hint">Listening sockets, owning process, working directory. Click a row to filter findings by that file tree.</p>
+    <h2>Сервисы</h2>
+    <p class="hint">Слушающие сокеты, процесс, рабочий каталог. Клик по строке открывает каталог сервиса во вкладке «Файлы».</p>
     <div class="table-wrap"><table id="services-table">
-      <thead><tr><th>port</th><th>proto</th><th>service</th><th>stack</th><th>pid</th><th>cwd</th><th>cmdline</th></tr></thead>
-      <tbody><tr><td colspan="7" class="empty">run an audit</td></tr></tbody>
+      <thead><tr><th>порт</th><th>прото</th><th>сервис</th><th>стек</th><th>pid</th><th>каталог</th><th>команда</th></tr></thead>
+      <tbody><tr><td colspan="7" class="empty">запустите аудит</td></tr></tbody>
     </table></div>
   </section>
 
-  <!-- FINDINGS -->
+  <!-- НАХОДКИ -->
   <section class="panel" id="panel-findings">
-    <h2>Findings</h2>
+    <h2>Находки</h2>
     <div class="filters">
-      <input id="f-search" placeholder="filter: file, rule, text">
+      <input id="f-search" placeholder="фильтр: файл, правило, текст">
       <select id="f-sev">
-        <option value="">all severities</option>
+        <option value="">все важности</option>
         <option value="high">high</option>
         <option value="medium">medium</option>
         <option value="low">low</option>
         <option value="info">info</option>
       </select>
-      <select id="f-kind"><option value="">all kinds</option></select>
+      <select id="f-kind"><option value="">все классы</option></select>
       <span class="status" id="f-count"></span>
     </div>
     <div class="split">
       <div class="list" id="findings-list"></div>
       <div class="detail" id="finding-detail">
-        <div class="empty">select a finding</div>
+        <div class="empty">выберите находку</div>
       </div>
     </div>
   </section>
 
-  <!-- FILES -->
+  <!-- ФАЙЛЫ -->
   <section class="panel" id="panel-files">
-    <h2>Files</h2>
+    <h2>Файлы</h2>
     <div class="row">
       <input id="path-input" class="grow" placeholder="/srv/notes">
-      <button id="btn-list">List</button>
-      <button id="btn-read">Open</button>
+      <button id="btn-list">Список</button>
+      <button id="btn-read">Открыть</button>
     </div>
     <div class="split files">
-      <div class="list" id="files-list"><div class="empty">enter a path and press List</div></div>
+      <div class="list" id="files-list"><div class="empty">введите путь и нажмите «Список»</div></div>
       <div class="detail">
         <div class="file-head"><span id="file-path">—</span><span class="status" id="file-status"></span></div>
-        <div class="code" id="file-view"><div class="empty">no file open</div></div>
+        <div class="code" id="file-view"><div class="empty">файл не открыт</div></div>
       </div>
     </div>
   </section>
 
-  <!-- GENERATOR -->
+  <!-- ГЕНЕРАТОР -->
   <section class="panel" id="panel-generator">
-    <h2>Generator</h2>
-    <p class="hint">Default output is a read-only GET probe with a 5 s timeout and a 64 KiB response cap. Anything that needs a state change is emitted as an inert scaffold marked <b>MANUAL REVIEW</b> and passes through the AST linter before it reaches this pane.</p>
+    <h2>Генератор</h2>
+    <p class="hint">
+      Проба — это настоящая проверка: несколько GET-запросов с полезной нагрузкой и маркером в ответе.
+      Всё, что требует изменения состояния, выходит заготовкой: по умолчанию она только печатает запрос,
+      отправляет с <code>--send</code>.
+    </p>
     <div class="grid">
-      <label>finding<input id="g-finding" readonly placeholder="pick one on the Findings tab"></label>
-      <label>service<input id="g-service" placeholder="notes"></label>
-      <label class="wide">endpoint<input id="g-endpoint" placeholder="/notes/1"></label>
+      <label>находка<input id="g-finding" readonly placeholder="выберите во вкладке «Находки»"></label>
+      <label>сервис<input id="g-service" placeholder="notes"></label>
+      <label>ручка<input id="g-endpoint" placeholder="/notes/1"></label>
+      <label>порт<input id="g-port" type="number" value="8080" min="1" max="65535"></label>
+      <label class="wide">базовый URL<input id="g-base" placeholder="http://127.0.0.1:8080"></label>
     </div>
     <div class="row">
-      <button id="btn-generate" class="primary">Generate probe</button>
-      <button id="btn-copy-probe">Copy</button>
-      <button id="btn-save-probe">Download</button>
+      <button id="btn-generate" class="primary">Сгенерировать</button>
+      <button id="btn-run-probe">Запустить пробу</button>
+      <button id="btn-copy-probe">Копировать</button>
+      <button id="btn-save-probe">Скачать</button>
       <span class="status" id="g-status"></span>
     </div>
     <div id="g-lint" class="lint" hidden></div>
-    <pre class="code" id="g-output"><div class="empty">nothing generated</div></pre>
+    <div class="table-wrap" id="g-requests-wrap" hidden>
+      <table id="g-requests">
+        <thead><tr><th>метка</th><th>запрос</th><th>что ищем</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div id="g-result" hidden>
+      <h2 style="margin-top:18px">Результат пробы <span class="status" id="g-verdict"></span></h2>
+      <div class="table-wrap"><table id="g-evidence">
+        <thead><tr><th>метка</th><th>статус</th><th>байт</th><th>мс</th><th>вердикт</th><th>улика</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+    <h2 style="margin-top:18px">Код</h2>
+    <pre class="code" id="g-output"><div class="empty">ничего не сгенерировано</div></pre>
   </section>
 
-  <!-- REPORT -->
+  <!-- ОТЧЁТ -->
   <section class="panel" id="panel-report">
-    <h2>Report</h2>
+    <h2>Отчёт</h2>
     <div class="row">
-      <button id="btn-report" class="primary">Build markdown</button>
-      <button id="btn-copy-report">Copy</button>
-      <button id="btn-save-report">Download</button>
+      <button id="btn-report" class="primary">Собрать markdown</button>
+      <button id="btn-copy-report">Копировать</button>
+      <button id="btn-save-report">Скачать</button>
       <span class="status" id="r-status"></span>
     </div>
-    <pre class="code" id="r-output"><div class="empty">no report</div></pre>
+    <pre class="code" id="r-output"><div class="empty">отчёта нет</div></pre>
   </section>
 
-  <!-- RULES -->
+  <!-- ПРАВИЛА -->
   <section class="panel" id="panel-rules">
-    <h2>Rules</h2>
-    <p class="hint">Heuristics, not proofs. Each hit is a place to read, not a confirmed bug. Language-specific rules only run on files detected as that language; the rest run everywhere.</p>
+    <h2>Правила</h2>
+    <p class="hint">Это эвристики, не доказательства. Каждое срабатывание — место, которое надо прочитать. Языковые правила запускаются только на файлах своего языка.</p>
     <div class="table-wrap"><table id="rules-table">
-      <thead><tr><th>id</th><th>kind</th><th>severity</th><th>languages</th><th>what it means</th><th>how to patch</th></tr></thead>
-      <tbody><tr><td colspan="6" class="empty">loading</td></tr></tbody>
+      <thead><tr><th>id</th><th>класс</th><th>важность</th><th>языки</th><th>что значит</th><th>как чинить</th></tr></thead>
+      <tbody><tr><td colspan="6" class="empty">загрузка</td></tr></tbody>
     </table></div>
-    <h2 style="margin-top:22px">Coverage</h2>
-    <p class="hint">What the audit actually reads, per language. Everything else is detected as a file but only gets the generic rules.</p>
+    <h2 style="margin-top:22px">Покрытие</h2>
+    <p class="hint">Что аудит реально читает по каждому языку. Остальные файлы определяются, но получают только универсальные правила.</p>
     <div class="table-wrap"><table id="coverage-table">
-      <thead><tr><th>language</th><th>shown as</th><th>rules</th><th>depth</th></tr></thead>
-      <tbody><tr><td colspan="4" class="empty">loading</td></tr></tbody>
+      <thead><tr><th>язык</th><th>как показан</th><th>правил</th><th>глубина</th></tr></thead>
+      <tbody><tr><td colspan="4" class="empty">загрузка</td></tr></tbody>
     </table></div>
   </section>
 
-  <!-- KNOWLEDGE -->
+  <!-- БАЗА ЗНАНИЙ -->
   <section class="panel" id="panel-knowledge">
-    <h2>Knowledge</h2>
+    <h2>База знаний</h2>
     <div class="split files">
       <div class="list" id="knowledge-list"></div>
-      <div class="detail"><pre class="code" id="knowledge-view"><div class="empty">pick a note</div></pre></div>
+      <div class="detail"><pre class="code" id="knowledge-view"><div class="empty">выберите заметку</div></pre></div>
     </div>
   </section>
 </main>
 
 <footer class="foot">
-  <span>127.0.0.1 only</span>
-  <span>read-only audit</span>
-  <span>never touch <code>/_checker/*</code></span>
+  <span>только 127.0.0.1</span>
+  <span>аудит только на чтение</span>
+  <span>никогда не трогать <code>/_checker/*</code></span>
 </footer>
 
 <script src="/web/app.js"></script>

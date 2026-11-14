@@ -60,6 +60,16 @@ def wait_ready(deadline: float = 20.0) -> bool:
 
 
 def main() -> int:
+    sys.path.insert(0, str(BASE))
+    sys.path.insert(0, str(BASE / "tools"))
+    import lab_server  # noqa: PLC0415
+
+    lab = lab_server.start(0)
+    lab_port = lab.server_address[1]
+
+    def lab_hits() -> list[str]:
+        return lab_server.HITS
+
     config_path = BASE / "config.json"
     original = config_path.read_bytes() if config_path.is_file() else None
     server = subprocess.Popen(
@@ -129,24 +139,40 @@ def main() -> int:
 
         print("generator")
         high = next(item for item in audit["findings"] if item["severity"] == "high")
-        probe = post("/api/generate", {"id": high["id"], "service": "notes"})
+        probe = post("/api/generate", {"id": high["id"], "service": "notes", "port": lab_port})
         check("probe has code", bool(probe.get("code")))
         check("probe lint clean", probe.get("lint", {}).get("ok") is True, str(probe.get("lint")))
         code = probe.get("code") or ""
-        check("probe is GET", "urlopen" in code and "data=" not in code)
-        candidates_line = next((line for line in code.splitlines() if line.startswith("CANDIDATES")), "")
-        check("probe candidates avoid checker", "/_checker" not in candidates_line and bool(candidates_line))
+        check("probe is GET-only", 'method="GET"' in code and "data=" not in code)
+        check("probe has requests", len(probe.get("requests") or []) >= 1)
+        check(
+            "probe requests avoid checker",
+            all("/_checker" not in item["path"] for item in (probe.get("requests") or [])),
+        )
         check("probe avoids state change", "requests.post" not in code)
 
         manual = next(item for item in audit["findings"] if item["kind"] == "Mass assignment")
-        scaffold = post("/api/generate", {"id": manual["id"], "service": "profile"})
+        scaffold = post("/api/generate", {"id": manual["id"], "service": "profile", "port": lab_port})
         check("manual finding is inert", scaffold.get("manual") is True)
-        check("inert scaffold notes review", "MANUAL REVIEW" in (scaffold.get("code") or ""))
+        check("scaffold lint ok", scaffold.get("lint", {}).get("ok") is True, str(scaffold.get("lint")))
+        check("scaffold carries dry-run", "--send" in (scaffold.get("code") or ""))
+
+        print("probe run")
+        sqli = next(item for item in audit["findings"]
+                    if item["kind"] == "SQL injection" and item["file"].endswith("main.go"))
+        run = post("/api/probe", {
+            "id": sqli["id"], "service": "lab", "endpoint": "/sqli",
+            "port": lab_port, "base": f"http://127.0.0.1:{lab_port}",
+        })
+        check("probe hit the lab", run.get("summary", {}).get("requests", 0) >= 3, str(run.get("summary")))
+        check("probe confirmed", run.get("summary", {}).get("verdict") == "confirmed", str(run.get("summary")))
+        check("probe evidence present", all("verdict" in row for row in run.get("results", [])))
+        check("probe stayed off checker", not any("/_checker" in hit for hit in lab_hits()))
 
         print("report")
         report = post("/api/report")
         markdown = report.get("markdown") or ""
-        check("report header", markdown.startswith("# AD audit report"))
+        check("report header", markdown.startswith("# Отчёт аудита A/D"), markdown.splitlines()[0] if markdown else "")
         check("report lists services", "| 8081 |" in markdown)
         check("report warns on checker", "/_checker" in markdown)
 
@@ -180,6 +206,7 @@ def main() -> int:
             lint_code('"""never call /_checker/*"""\nx = 1\n')["ok"] is True,
         )
     finally:
+        lab.shutdown()
         server.terminate()
         try:
             server.wait(timeout=5)

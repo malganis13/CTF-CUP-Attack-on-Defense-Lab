@@ -1,4 +1,4 @@
-/* AD Audit — client. No dependencies, no build step. */
+/* Аудит A/D — клиент. Без зависимостей и сборки. */
 "use strict";
 
 const $ = (selector) => document.querySelector(selector);
@@ -13,12 +13,29 @@ const state = {
   activeFinding: null,
   activeFile: null,
   probe: null,
+  probeResult: null,
   report: null,
 };
 
 const SEV_ORDER = { high: 0, medium: 1, low: 2, info: 3 };
 
-/* ---------- helpers ---------- */
+const VERDICT_RU = {
+  signal: "сигнал",
+  diff: "отличие",
+  clean: "чисто",
+  error: "ошибка",
+  blocked: "заблокировано",
+};
+
+const SUMMARY_RU = {
+  confirmed: "подтверждено",
+  candidate: "кандидат",
+  "no signal": "сигналов нет",
+  manual: "только вручную",
+  blocked: "заблокировано",
+};
+
+/* ---------- утилиты ---------- */
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -77,7 +94,7 @@ function download(name, text) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-/* ---------- tabs ---------- */
+/* ---------- вкладки ---------- */
 
 function showTab(name) {
   $$("#tabs button").forEach((button) => button.classList.toggle("active", button.dataset.tab === name));
@@ -88,7 +105,7 @@ $$("#tabs button").forEach((button) => {
   button.addEventListener("click", () => showTab(button.dataset.tab));
 });
 
-/* ---------- connect ---------- */
+/* ---------- подключение ---------- */
 
 function fillForm() {
   const target = (state.config && state.config.target) || {};
@@ -100,7 +117,7 @@ function fillForm() {
   $("#password-row").hidden = $("#cfg-auth").value !== "password";
   const connected = Boolean(target.host && target.user);
   const badge = $("#badge-target");
-  badge.textContent = connected ? `${target.user}@${target.host}:${target.port || 22}` : "not connected";
+  badge.textContent = connected ? `${target.user}@${target.host}:${target.port || 22}` : "не подключено";
   badge.className = "badge" + (connected ? " on" : " off");
 }
 
@@ -124,7 +141,7 @@ $("#btn-save").addEventListener("click", async () => {
     const result = await api("/api/config", { method: "POST", body: JSON.stringify(body) });
     state.config = result.state;
     fillForm();
-    setStatus(status, "saved", "ok");
+    setStatus(status, "сохранено", "ok");
   } catch (error) {
     setStatus(status, error.message, "bad");
   }
@@ -133,20 +150,20 @@ $("#btn-save").addEventListener("click", async () => {
 $("#btn-test").addEventListener("click", async () => {
   const status = $("#connect-status");
   const log = $("#connect-log");
-  setStatus(status, "connecting…");
+  setStatus(status, "подключаюсь…");
   try {
     const result = await api("/api/test", { method: "POST", body: "{}" });
     log.hidden = false;
-    log.textContent = `backend: ${result.backend}\n$ id\n${result.output}`;
-    setStatus(status, "ok", "ok");
+    log.textContent = `бэкенд: ${result.backend}\n$ id\n${result.output}`;
+    setStatus(status, "связь есть", "ok");
   } catch (error) {
     log.hidden = false;
     log.textContent = error.message;
-    setStatus(status, "failed", "bad");
+    setStatus(status, "не вышло", "bad");
   }
 });
 
-/* ---------- audit ---------- */
+/* ---------- аудит ---------- */
 
 async function pollJob(id, onLog) {
   const started = Date.now();
@@ -154,7 +171,7 @@ async function pollJob(id, onLog) {
     const job = await api("/api/job?id=" + encodeURIComponent(id));
     if (onLog) onLog(job.log || []);
     if (job.status !== "running") return job;
-    if (Date.now() - started > 15 * 60 * 1000) throw new Error("job timed out");
+    if (Date.now() - started > 15 * 60 * 1000) throw new Error("задача не уложилась в 15 минут");
     await sleep(600);
   }
 }
@@ -167,18 +184,18 @@ $("#btn-audit").addEventListener("click", async () => {
   button.disabled = true;
   bar.className = "bar running";
   log.textContent = "";
-  setStatus(status, "starting…");
+  setStatus(status, "запускаю…");
   try {
     const started = await api("/api/audit", { method: "POST", body: "{}" });
     const job = await pollJob(started.job, (lines) => {
       log.textContent = lines.join("\n");
       log.scrollTop = log.scrollHeight;
-      setStatus(status, "running — " + lines.length + " steps");
+      setStatus(status, "идёт — шагов: " + lines.length);
     });
-    if (job.status === "error") throw new Error(job.error || "audit failed");
+    if (job.status === "error") throw new Error(job.error || "аудит упал");
     ingest(job.result);
     bar.className = "bar done";
-    setStatus(status, "done", "ok");
+    setStatus(status, "готово", "ok");
     showTab("findings");
   } catch (error) {
     bar.className = "bar error";
@@ -198,14 +215,14 @@ function ingest(audit) {
   renderServices();
   renderFindings();
   renderKindFilter();
-  renderGeneratorDefaults();
+  if (state.activeFinding) setGeneratorFinding(state.activeFinding);
 }
 
 function renderBadges() {
   const counts = (state.audit && state.audit.counts) || {};
   const badge = $("#badge-counts");
   if (!state.audit) {
-    badge.textContent = "no audit";
+    badge.textContent = "аудита нет";
     return;
   }
   badge.textContent = `${counts.high || 0} high · ${counts.medium || 0} med · ${counts.low || 0} low`;
@@ -233,7 +250,7 @@ function renderSummary() {
   });
 }
 
-/* ---------- services ---------- */
+/* ---------- сервисы ---------- */
 
 function renderServices() {
   const body = $("#services-table tbody");
@@ -241,7 +258,7 @@ function renderServices() {
   const services = (state.audit && state.audit.services) || [];
   if (!services.length) {
     const row = el("tr");
-    const cell = el("td", "empty", "no listening services found");
+    const cell = el("td", "empty", "слушающих сервисов не найдено");
     cell.colSpan = 7;
     row.appendChild(cell);
     body.appendChild(row);
@@ -253,12 +270,8 @@ function renderServices() {
     row.appendChild(el("td", "cell-mono", service.proto));
     row.appendChild(el("td", "cell-mono", service.service || service.process || "?"));
     const stackCell = el("td");
-    if (service.stack) {
-      stackCell.appendChild(el("span", "pill", service.stack));
-    } else {
-      stackCell.textContent = "—";
-      stackCell.className = "empty";
-    }
+    if (service.stack) stackCell.appendChild(el("span", "pill", service.stack));
+    else { stackCell.textContent = "—"; stackCell.className = "empty"; }
     row.appendChild(stackCell);
     row.appendChild(el("td", "cell-mono", service.pid ?? "—"));
     row.appendChild(el("td", "cell-mono", service.cwd || "—"));
@@ -268,17 +281,25 @@ function renderServices() {
     cmd.style.textOverflow = "ellipsis";
     cmd.style.whiteSpace = "nowrap";
     row.appendChild(cmd);
+    if (service.cwd) {
+      row.title = "открыть каталог";
+      row.addEventListener("click", () => {
+        showTab("files");
+        $("#path-input").value = service.cwd;
+        listPath(service.cwd);
+      });
+    }
     body.appendChild(row);
   });
 }
 
-/* ---------- findings ---------- */
+/* ---------- находки ---------- */
 
 function renderKindFilter() {
   const select = $("#f-kind");
   const current = select.value;
   select.textContent = "";
-  select.appendChild(new Option("all kinds", ""));
+  select.appendChild(new Option("все классы", ""));
   const kinds = Array.from(new Set(state.findings.map((item) => item.kind))).sort();
   kinds.forEach((kind) => select.appendChild(new Option(kind, kind)));
   select.value = kinds.includes(current) ? current : "";
@@ -303,7 +324,7 @@ function renderFindings() {
   const items = visibleFindings();
   $("#f-count").textContent = `${items.length} / ${state.findings.length}`;
   if (!items.length) {
-    list.appendChild(el("div", "empty", state.findings.length ? "no match" : "run an audit"));
+    list.appendChild(el("div", "empty", state.findings.length ? "нет совпадений" : "запустите аудит"));
     return;
   }
   items.forEach((finding) => {
@@ -324,6 +345,7 @@ function selectFinding(finding) {
   state.activeFinding = finding;
   $$("#findings-list .item").forEach((node) => node.classList.toggle("active", node.dataset.id === finding.id));
   renderFindingDetail(finding);
+  setGeneratorFinding(finding);
 }
 
 function renderFindingDetail(finding) {
@@ -333,44 +355,43 @@ function renderFindingDetail(finding) {
 
   const head = el("div");
   head.appendChild(el("h3", null, finding.kind));
-  head.appendChild(el("div", "loc", `${finding.file}:${finding.line} · rule ${finding.rule} · ${finding.language || "text"}`));
+  head.appendChild(el("div", "loc", `${finding.file}:${finding.line} · правило ${finding.rule} · ${finding.language || "text"}`));
   body.appendChild(head);
 
   const meta = el("div", "row");
   meta.appendChild(el("span", "pill " + finding.severity, finding.severity));
-  meta.appendChild(el("span", "pill", "checker risk: " + (finding.checker_risk || "low")));
+  meta.appendChild(el("span", "pill", "риск для чекера: " + (finding.checker_risk || "low")));
   body.appendChild(meta);
 
   const why = el("div", "block");
-  why.appendChild(el("h4", null, "why it fired"));
+  why.appendChild(el("h4", null, "почему сработало"));
   why.appendChild(el("p", null, finding.why));
   body.appendChild(why);
 
   const patch = el("div", "block");
-  patch.appendChild(el("h4", null, "patch"));
+  patch.appendChild(el("h4", null, "как чинить"));
   patch.appendChild(el("p", null, finding.patch));
   body.appendChild(patch);
 
   const ctx = el("div", "block");
-  ctx.appendChild(el("h4", null, "context"));
+  ctx.appendChild(el("h4", null, "контекст"));
   const box = el("div", "ctx");
   const start = finding.context_start || Math.max(1, finding.line - (finding.context ? finding.context.length : 1) + 1);
   (finding.context || []).forEach((line, index) => {
     const number = start + index;
-    const row = el("div", number === finding.line ? "mark" : null, `${String(number).padStart(4)}  ${line}`);
-    box.appendChild(row);
+    box.appendChild(el("div", number === finding.line ? "mark" : null, `${String(number).padStart(4)}  ${line}`));
   });
   ctx.appendChild(box);
   body.appendChild(ctx);
 
   const actions = el("div", "row");
-  const generate = el("button", "primary", "Generate probe");
+  const generate = el("button", "primary", "В генератор");
   generate.addEventListener("click", () => {
     setGeneratorFinding(finding);
     showTab("generator");
   });
   actions.appendChild(generate);
-  const open = el("button", null, "Open file");
+  const open = el("button", null, "Открыть файл");
   open.addEventListener("click", () => {
     showTab("files");
     readFile(finding.file);
@@ -395,24 +416,22 @@ $("#f-kind").addEventListener("change", (event) => {
   renderFindings();
 });
 
-/* ---------- files ---------- */
+/* ---------- файлы ---------- */
 
 async function listPath(path) {
   const status = $("#file-status");
-  setStatus(status, "listing…");
+  setStatus(status, "читаю каталог…");
   try {
     const result = await api("/api/files?path=" + encodeURIComponent(path));
     const list = $("#files-list");
     list.textContent = "";
-    if (!result.entries.length) {
-      list.appendChild(el("div", "empty", "empty or unreadable"));
-    }
+    if (!result.entries.length) list.appendChild(el("div", "empty", "пусто или нет доступа"));
     result.entries.forEach((entry) => {
       const item = el("div", "item");
-      item.appendChild(el("span", "pill", entry.type === "dir" ? "dir" : "file"));
+      item.appendChild(el("span", "pill", entry.type === "dir" ? "кат" : "файл"));
       const text = el("div", "t");
       text.appendChild(el("b", null, entry.name));
-      text.appendChild(el("small", null, entry.size === null || entry.size === undefined ? "" : entry.size + " B"));
+      text.appendChild(el("small", null, entry.size === null || entry.size === undefined ? "" : entry.size + " Б"));
       item.appendChild(text);
       item.addEventListener("click", () => {
         const next = path.replace(/\/+$/, "") + "/" + entry.name;
@@ -422,7 +441,7 @@ async function listPath(path) {
       });
       list.appendChild(item);
     });
-    setStatus(status, `${result.entries.length} entries`, "ok");
+    setStatus(status, `записей: ${result.entries.length}`, "ok");
   } catch (error) {
     setStatus(status, error.message, "bad");
   }
@@ -431,7 +450,7 @@ async function listPath(path) {
 async function readFile(path) {
   const view = $("#file-view");
   const status = $("#file-status");
-  setStatus(status, "reading…");
+  setStatus(status, "читаю файл…");
   try {
     const result = await api("/api/file?path=" + encodeURIComponent(path));
     $("#path-input").value = path;
@@ -439,8 +458,8 @@ async function readFile(path) {
     state.activeFile = result.path || path;
     view.textContent = "";
     if (result.binary) {
-      view.appendChild(el("div", "empty", "binary file — not rendered"));
-      setStatus(status, "binary", "bad");
+      view.appendChild(el("div", "empty", "двоичный файл — не показываю"));
+      setStatus(status, "двоичный", "bad");
       return;
     }
     const hits = new Map();
@@ -470,9 +489,9 @@ async function readFile(path) {
     }
     view.appendChild(scroll);
     if (lines.length > cap) {
-      view.appendChild(el("div", "empty", `truncated at ${cap} of ${lines.length} lines`));
+      view.appendChild(el("div", "empty", `обрезано на ${cap} из ${lines.length} строк`));
     }
-    setStatus(status, `${lines.length} lines · ${(result.findings || []).length} findings`, "ok");
+    setStatus(status, `строк: ${lines.length} · находок: ${(result.findings || []).length}`, "ok");
   } catch (error) {
     setStatus(status, error.message, "bad");
   }
@@ -484,47 +503,59 @@ $("#path-input").addEventListener("keydown", (event) => {
   if (event.key === "Enter") readFile($("#path-input").value.trim());
 });
 
-/* ---------- generator ---------- */
+/* ---------- генератор ---------- */
 
 function serviceFromPath(path) {
-  const match = /\/(?:srv|opt|app|var\/www)\/([^/]+)\//.exec(path || "");
+  const match = /\/(?:srv|opt|app|var\/www|data)\/([^/]+)\//.exec(path || "");
   if (match) return match[1];
   const services = (state.audit && state.audit.services) || [];
   const hit = services.find((service) => service.cwd && path && path.startsWith(service.cwd));
   return hit ? hit.service : "service";
 }
 
+function servicePort(name, path) {
+  const services = (state.audit && state.audit.services) || [];
+  const hit = services.find((service) => service.service === name)
+    || services.find((service) => service.cwd && path && path.startsWith(service.cwd));
+  return hit ? hit.port : 8080;
+}
+
 function endpointFor(finding) {
   const endpoints = (state.audit && state.audit.endpoints) || [];
   const sameFile = endpoints.filter((endpoint) => endpoint.file === finding.file);
-  if (sameFile.length) return sameFile[0].path;
+  if (sameFile.length) {
+    sameFile.sort((a, b) => Math.abs((a.line || 0) - finding.line) - Math.abs((b.line || 0) - finding.line));
+    return sameFile[0].path;
+  }
   if (endpoints.length) return endpoints[0].path;
   return "/";
-}
-
-function renderGeneratorDefaults() {
-  if (!state.activeFinding) return;
-  setGeneratorFinding(state.activeFinding);
 }
 
 function setGeneratorFinding(finding) {
   state.activeFinding = finding;
   $("#g-finding").value = `${finding.kind} @ ${finding.file}:${finding.line}`;
-  $("#g-service").value = serviceFromPath(finding.file);
+  const service = serviceFromPath(finding.file);
+  const port = servicePort(service, finding.file);
+  $("#g-service").value = service;
+  $("#g-port").value = port;
   $("#g-endpoint").value = endpointFor(finding);
+  const host = (state.config.target && state.config.target.host) || "";
+  $("#g-base").value = `http://${host || "127.0.0.1"}:${port}`;
   $("#g-lint").hidden = true;
+  $("#g-requests-wrap").hidden = true;
+  $("#g-result").hidden = true;
   $("#g-output").textContent = "";
-  $("#g-output").appendChild(el("div", "empty", "press Generate probe"));
+  $("#g-output").appendChild(el("div", "empty", "нажмите «Сгенерировать»"));
 }
 
 $("#btn-generate").addEventListener("click", async () => {
   const finding = state.activeFinding;
   const status = $("#g-status");
   if (!finding) {
-    setStatus(status, "select a finding first", "bad");
+    setStatus(status, "сначала выберите находку", "bad");
     return;
   }
-  setStatus(status, "generating…");
+  setStatus(status, "собираю…");
   try {
     const result = await api("/api/generate", {
       method: "POST",
@@ -532,29 +563,131 @@ $("#btn-generate").addEventListener("click", async () => {
         id: finding.id,
         service: $("#g-service").value.trim() || "service",
         endpoint: $("#g-endpoint").value.trim() || null,
+        port: Number($("#g-port").value) || 80,
       }),
     });
     state.probe = result;
     $("#g-output").textContent = result.code;
-    const lint = $("#g-lint");
-    lint.hidden = false;
-    if (result.lint && result.lint.ok) {
-      lint.className = "lint ok";
-      lint.textContent = "lint: clean — read-only probe, no state change, no checker call";
-    } else {
-      lint.className = "lint";
-      lint.textContent = "lint: rejected\n" + ((result.lint && result.lint.errors) || []).join("\n");
-    }
-    setStatus(status, result.manual ? "manual review required" : "read-only probe", result.manual ? "bad" : "ok");
+    renderLint(result);
+    renderRequests(result.requests || []);
+    setStatus(
+      status,
+      result.manual ? "заготовка: только вручную" : `запросов: ${(result.requests || []).length}`,
+      result.manual ? "bad" : "ok"
+    );
   } catch (error) {
     setStatus(status, error.message, "bad");
   }
 });
 
+function renderLint(result) {
+  const lint = $("#g-lint");
+  lint.hidden = false;
+  const errors = (result.lint && result.lint.errors) || [];
+  const warnings = (result.lint && result.lint.warnings) || [];
+  if (result.lint && result.lint.ok) {
+    lint.className = "lint ok";
+    lint.textContent = warnings.length
+      ? `линтер (${result.lint.mode}): без ошибок, предупреждений ${warnings.length}\n` + warnings.join("\n")
+      : `линтер (${result.lint.mode}): чисто`;
+  } else {
+    lint.className = "lint";
+    lint.textContent = `линтер (${result.lint.mode}): отклонено\n` + errors.join("\n");
+  }
+}
+
+function renderRequests(requests) {
+  const wrap = $("#g-requests-wrap");
+  const body = $("#g-requests tbody");
+  body.textContent = "";
+  if (!requests.length) {
+    wrap.hidden = true;
+    return;
+  }
+  requests.forEach((request) => {
+    const row = el("tr");
+    row.appendChild(el("td", "cell-mono", request.label || "—"));
+    row.appendChild(el("td", "cell-mono", request.method ? `${request.method} ${request.path}` : request.path));
+    row.appendChild(el("td", null, request.note || (request.marker ? "маркер в ответе" : "сравнение с базовым")));
+    body.appendChild(row);
+  });
+  wrap.hidden = false;
+}
+
+$("#btn-run-probe").addEventListener("click", async () => {
+  const finding = state.activeFinding;
+  const status = $("#g-status");
+  if (!finding) {
+    setStatus(status, "сначала выберите находку", "bad");
+    return;
+  }
+  const base = $("#g-base").value.trim();
+  if (!base.startsWith("http")) {
+    setStatus(status, "нужен базовый URL вида http://host:port", "bad");
+    return;
+  }
+  setStatus(status, "проба идёт…");
+  $("#btn-run-probe").disabled = true;
+  try {
+    const result = await api("/api/probe", {
+      method: "POST",
+      body: JSON.stringify({
+        id: finding.id,
+        service: $("#g-service").value.trim(),
+        endpoint: $("#g-endpoint").value.trim() || null,
+        port: Number($("#g-port").value) || 80,
+        base,
+      }),
+    });
+    state.probeResult = result;
+    renderEvidence(result);
+    const verdict = SUMMARY_RU[result.summary.verdict] || result.summary.verdict;
+    setStatus(status, `вердикт: ${verdict}`, result.summary.verdict === "confirmed" ? "ok" : "");
+  } catch (error) {
+    setStatus(status, error.message, "bad");
+  } finally {
+    $("#btn-run-probe").disabled = false;
+  }
+});
+
+function renderEvidence(result) {
+  const holder = $("#g-result");
+  const body = $("#g-evidence tbody");
+  body.textContent = "";
+  holder.hidden = false;
+  const summary = result.summary || {};
+  const budget = result.budget || null;
+  $("#g-verdict").textContent = (SUMMARY_RU[summary.verdict] || summary.verdict || "") +
+    ` · запросов ${summary.requests ?? 0}, сигналов ${summary.signals ?? 0}, отличий ${summary.diffs ?? 0}` +
+    (budget ? ` · бюджет ${budget.used}/${budget.capacity} за ${Math.round(budget.window)} с` : "");
+
+  if (!(result.results || []).length) {
+    const row = el("tr");
+    const cell = el("td", "empty", result.reason || "проба не дала запросов");
+    cell.colSpan = 6;
+    row.appendChild(cell);
+    body.appendChild(row);
+    return;
+  }
+
+  result.results.forEach((row) => {
+    const tr = el("tr");
+    tr.appendChild(el("td", "cell-mono", row.label));
+    tr.appendChild(el("td", "cell-mono", row.status));
+    tr.appendChild(el("td", "cell-mono", row.bytes));
+    tr.appendChild(el("td", "cell-mono", row.ms));
+    const verdict = el("td");
+    verdict.appendChild(el("span", "pill verdict-" + row.verdict, VERDICT_RU[row.verdict] || row.verdict));
+    tr.appendChild(verdict);
+    tr.appendChild(el("td", "mono-small", row.evidence || ""));
+    body.appendChild(tr);
+  });
+}
+
 $("#btn-copy-probe").addEventListener("click", async () => {
   if (!state.probe) return;
   await copyText(state.probe.code);
-  setStatus($("#g-status"), "copied", "ok");
+  setStatus($("#g-status"), "скопировано", "ok");
 });
 
 $("#btn-save-probe").addEventListener("click", () => {
@@ -562,16 +695,16 @@ $("#btn-save-probe").addEventListener("click", () => {
   download(`${state.probe.name || "probe"}.py`, state.probe.code);
 });
 
-/* ---------- report ---------- */
+/* ---------- отчёт ---------- */
 
 $("#btn-report").addEventListener("click", async () => {
   const status = $("#r-status");
-  setStatus(status, "building…");
+  setStatus(status, "собираю…");
   try {
     const result = await api("/api/report", { method: "POST", body: "{}" });
     state.report = result.markdown;
     $("#r-output").textContent = result.markdown;
-    setStatus(status, `${result.markdown.split("\n").length} lines`, "ok");
+    setStatus(status, `строк: ${result.markdown.split("\n").length}`, "ok");
   } catch (error) {
     setStatus(status, error.message, "bad");
   }
@@ -580,7 +713,7 @@ $("#btn-report").addEventListener("click", async () => {
 $("#btn-copy-report").addEventListener("click", async () => {
   if (!state.report) return;
   await copyText(state.report);
-  setStatus($("#r-status"), "copied", "ok");
+  setStatus($("#r-status"), "скопировано", "ok");
 });
 
 $("#btn-save-report").addEventListener("click", () => {
@@ -588,7 +721,7 @@ $("#btn-save-report").addEventListener("click", () => {
   download("ad-audit-report.md", state.report);
 });
 
-/* ---------- rules ---------- */
+/* ---------- правила ---------- */
 
 async function loadRules() {
   try {
@@ -623,7 +756,7 @@ async function loadRules() {
   }
 }
 
-/* ---------- knowledge ---------- */
+/* ---------- база знаний ---------- */
 
 async function loadKnowledge() {
   try {
@@ -632,7 +765,7 @@ async function loadKnowledge() {
     const view = $("#knowledge-view");
     list.textContent = "";
     if (!result.items.length) {
-      list.appendChild(el("div", "empty", "no notes in knowledge/"));
+      list.appendChild(el("div", "empty", "в knowledge/ пусто"));
       return;
     }
     result.items.forEach((item, index) => {
@@ -651,7 +784,7 @@ async function loadKnowledge() {
   }
 }
 
-/* ---------- boot ---------- */
+/* ---------- старт ---------- */
 
 async function boot() {
   try {
@@ -659,17 +792,17 @@ async function boot() {
     state.config = { target: current.target || {} };
     state.demo = Boolean(current.demo);
     $("#version").textContent = "v" + current.version;
-    $("#badge-backend").textContent = "backend: " + current.backend;
+    $("#badge-backend").textContent = "бэкенд: " + current.backend;
     $("#badge-demo").hidden = !current.demo;
     fillForm();
   } catch (error) {
-    setStatus($("#connect-status"), "server unreachable: " + error.message, "bad");
+    setStatus($("#connect-status"), "сервер не отвечает: " + error.message, "bad");
   }
 
   try {
     const last = await api("/api/last");
     if (last && last.findings) ingest(last);
-  } catch (_) { /* no audit yet */ }
+  } catch (_) { /* аудита ещё нет */ }
 
   loadRules();
   loadKnowledge();

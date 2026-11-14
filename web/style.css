@@ -249,6 +249,16 @@ pre.code .empty { padding: 0; }
 .langs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .langs .pill { font-size: 11px; }
 
+.pill.verdict-signal { color: var(--ok); border-color: #1d3d24; background: #0e1a12; }
+.pill.verdict-diff { color: var(--medium); border-color: #4a3a12; background: #1c1608; }
+.pill.verdict-clean { color: var(--muted); }
+.pill.verdict-error,
+.pill.verdict-blocked { color: var(--high); border-color: #4a1d1c; background: #1e0f0e; }
+
+.mono-small { font-family: var(--mono); font-size: 11.5px; color: var(--muted); word-break: break-word; }
+#g-requests-wrap, #g-result { margin-bottom: 14px; }
+#g-evidence td, #g-requests td { font-size: 12.5px; }
+
 /* tables */
 .table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 4px; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
