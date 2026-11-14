@@ -54,6 +54,10 @@ def finding(kind: str, param: str, file: str = "/srv/app.py") -> dict:
 
 
 def main() -> int:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
     server = lab_server.start(0)
     port = server.server_address[1]
     base = f"http://127.0.0.1:{port}"

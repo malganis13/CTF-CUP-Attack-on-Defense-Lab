@@ -60,6 +60,10 @@ def wait_ready(deadline: float = 20.0) -> bool:
 
 
 def main() -> int:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
     sys.path.insert(0, str(BASE))
     sys.path.insert(0, str(BASE / "tools"))
     import lab_server  # noqa: PLC0415

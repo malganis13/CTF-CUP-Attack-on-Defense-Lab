@@ -14,6 +14,7 @@ import argparse
 import json
 import mimetypes
 import secrets
+import sys
 import threading
 import time
 from pathlib import Path
@@ -388,6 +389,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> int:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)

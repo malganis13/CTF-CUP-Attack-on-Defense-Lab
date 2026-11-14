@@ -1,14 +1,18 @@
-<#
+﻿<#
 .SYNOPSIS
-    AD Audit — launcher for Windows 11.
+    Аудит A/D — лаунчер для Windows 11.
 
 .DESCRIPTION
-    Starts the local web UI on 127.0.0.1. Read-only audit only.
+    Поднимает локальный веб-интерфейс на 127.0.0.1. Аудит только на чтение.
 
 .EXAMPLE
     .\run.ps1
     .\run.ps1 -Demo
     .\run.ps1 -Port 9000
+
+.NOTES
+    Если PowerShell блокирует запуск скрипта:
+    powershell -ExecutionPolicy Bypass -File .\run.ps1
 #>
 [CmdletBinding()]
 param(
@@ -20,24 +24,43 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location -LiteralPath $PSScriptRoot
 
-$python = $null
-foreach ($candidate in @("python", "py", "python3")) {
-    $command = Get-Command $candidate -ErrorAction SilentlyContinue
-    if ($command) { $python = $command.Source; break }
+# Кириллица в консоли Windows ломается без этого.
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+$env:PYTHONIOENCODING = "utf-8"
+
+$candidates = @()
+foreach ($name in @("python", "py", "python3")) {
+    $command = Get-Command $name -ErrorAction SilentlyContinue
+    if ($command) { $candidates += $command.Source }
 }
-if (-not $python) {
-    throw "python not found in PATH; install Python 3.10+ and retry"
+if (-not $candidates) {
+    throw "python не найден в PATH; поставьте Python 3.10+ (winget install Python.Python.3.12)"
 }
 
-& $python -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)"
-if ($LASTEXITCODE -ne 0) {
-    throw "Python 3.10 or newer is required"
+$python = $null
+foreach ($candidate in $candidates) {
+    $output = $null
+    try {
+        $output = & $candidate -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
+    } catch {
+        continue
+    }
+    if ($LASTEXITCODE -ne 0 -or -not $output) { continue }
+    $parts = $output.Trim().Split(".")
+    if ([int]$parts[0] -ge 3 -and [int]$parts[1] -ge 10) {
+        $python = $candidate
+        break
+    }
+}
+if (-not $python) {
+    throw "нужен Python 3.10 или новее; найденное не подошло: $($candidates -join ', ')"
 }
 
 $arguments = @("app.py", "--host", $Bind, "--port", $Port)
 if ($Demo) { $arguments += "--demo" }
 
-Write-Host "AD Audit  ->  http://${Bind}:${Port}" -ForegroundColor Cyan
-if ($Demo) { Write-Host "demo mode: fixture audit, no SSH" -ForegroundColor Yellow }
+Write-Host "Аудит A/D  ->  http://${Bind}:${Port}" -ForegroundColor Cyan
+Write-Host "python: $python"
+if ($Demo) { Write-Host "демо-режим: фикстуры, без SSH" -ForegroundColor Yellow }
 
 & $python @arguments

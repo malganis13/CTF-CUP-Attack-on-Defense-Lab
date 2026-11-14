@@ -185,6 +185,10 @@ def load_sources() -> dict[str, str]:
 
 
 def main() -> int:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
     if not SRC.is_dir():
         print(f"missing fixture tree: {SRC}")
         return 1

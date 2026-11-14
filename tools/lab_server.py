@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import threading
 import time
 import urllib.parse
@@ -106,6 +107,10 @@ def start(port: int = 0) -> ThreadingHTTPServer:
 
 
 def main() -> int:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=9300)
     args = parser.parse_args()
