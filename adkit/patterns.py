@@ -68,7 +68,7 @@ RULES: tuple[Rule, ...] = (
         why="An object is fetched by id alone. The owner is not part of the query.",
         patch="Bind the object to the authenticated principal: WHERE id=? AND owner=?.",
         pattern=re.compile(r"""\bwhere\b[^;\n]*\bid\s*=\s*(?:\?|:\w+|\$\d+|\{\w+\})""", re.I),
-        absent=("owner", "user_id", "team_id", "account_id", "tenant"),
+        absent=("owner", "user_id", "team_id", "account_id", "tenant", "select 1"),
     ),
     Rule(
         id="path-join",
@@ -628,9 +628,72 @@ LANG_RULES: tuple[Rule, ...] = (
         pattern=re.compile(r"""(?:Http::(?:get|post|put|patch)|file_get_contents|curl_init)\s*\(\s*(?:request\(|\$_(?:GET|POST|REQUEST))""", re.I),
         languages=("php",),
     ),
+    Rule(
+        id="crypto-custom-cipher",
+        kind="Crypto: custom cipher",
+        severity="medium",
+        why="A hand-written block cipher or its key schedule: rotations, S-boxes and a fixed number of rounds chosen by the author, not a reviewed primitive.",
+        patch="Replace with AES-GCM or ChaCha20-Poly1305 from a maintained library; keep only the key exchange custom.",
+        pattern=re.compile(r"""\b(?:FEAL|Feistel|feistel|S-?box|sbox|key_?schedule|key_?expansion)\b"""),
+    ),
+    Rule(
+        id="logic-balance-update",
+        kind="Business logic: balance update",
+        severity="medium",
+        why="A balance is incremented in place with no idempotency key and no transaction guard: replaying the request adds money again.",
+        patch="Mark the source document used inside the same transaction (UPDATE ... WHERE is_used=false RETURNING), then credit once.",
+        pattern=re.compile(r"""(?:\bbalance\s*=\s*balance\s*\+|SET\s+balance\s*=\s*balance\s*\+|\bbalance\s*\+=)""", re.I),
+    ),
+    Rule(
+        id="logic-missing-owner-check",
+        kind="Business logic: object owner",
+        severity="high",
+        why="The object is loaded by an identifier from the request and returned without checking the owner.",
+        patch="Compare the object owner with the session principal before acting; return 404 on mismatch.",
+        pattern=re.compile(r"""\bget_object_or_404\(\s*\w+\s*,\s*(?:pk|id)\s*=|\.objects\.get\(\s*(?:pk|id)\s*="""),
+        languages=("python",),
+    ),
 )
 
 RULES: tuple[Rule, ...] = RULES + LANG_RULES
+
+# Сборки, вендоренные копии и минифицированные бандлы: находки в них — шум,
+# который отнимает внимание в раунде (three.core.min.js, chunk-vendors, crow/json.h).
+GENERATED_MARKERS = (
+    "/node_modules/",
+    "/vendor/",
+    "/third_party/",
+    "/3rdparty/",
+    "/external/",
+    "/public/js/",
+    "/static/js/",
+    "/dist/",
+    "/build/static/",
+    ".min.js",
+    ".min.css",
+    "chunk-vendors",
+    "-bundle.js",
+    ".map",
+)
+
+
+def is_generated(path: str, lines: list[str]) -> bool:
+    """Файл — сборка или чужой код, а не сервис, который правит команда."""
+    low = path.lower()
+    if any(marker in low for marker in GENERATED_MARKERS):
+        return True
+    if not lines:
+        return False
+    longest = max((len(line) for line in lines[:400]), default=0)
+    if longest > 2000:
+        return True
+    average = sum(len(line) for line in lines) / len(lines)
+    if average > 400:
+        return True
+    # Заголовок на тысячу строк — это библиотека, а не код сервиса.
+    if low.endswith((".h", ".hpp", ".hh")) and len(lines) > 800:
+        return True
+    return False
 
 
 def scan_text(path: str, text: str, language: str | None = None) -> list[dict]:
@@ -640,6 +703,8 @@ def scan_text(path: str, text: str, language: str | None = None) -> list[dict]:
     seen: set[tuple[str, int]] = set()
     seen_kind: set[tuple[str, int]] = set()
     detected = language or language_of(path, text)
+    if is_generated(path, lines):
+        return findings
     for rule in RULES:
         if rule.languages and detected not in rule.languages:
             continue

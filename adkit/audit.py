@@ -10,7 +10,8 @@ import shlex
 import time
 from pathlib import Path
 
-from . import patterns, priority, ru
+from . import binaries, patterns, priority, ru
+from .binaries import ELF_COMMAND, STRINGS_COMMAND
 from .languages import detect_stacks, stack_for
 from .ssh import BaseSSH
 
@@ -38,7 +39,7 @@ env 2>/dev/null | sort | head -200
 echo __ROOTS__
 ls -la /opt /srv /app /var/www /home /root /data 2>/dev/null
 echo __PIDS__
-pids=$(ss -lntp 2>/dev/null | awk 'NR>1{print $6}' | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | sort -u)
+pids=$(ss -lntp 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u)
 if [ -n "$pids" ]; then
   for p in $pids; do
     echo "== $p"
@@ -134,7 +135,12 @@ def build_services(ss_text: str, pids: dict[int, dict]) -> list[dict]:
         pid = int(pid_match.group(1)) if pid_match else None
         process_match = re.search(r'users:\(\("([^"]+)"', line)
         process = process_match.group(1) if process_match else ""
-        detail = pids.get(pid or -1, {})
+        # у php и node в одной строке несколько pid: берём первый, для которого
+        # прочитан /proc, иначе cwd и cmdline теряются
+        all_pids = [int(value) for value in re.findall(r"pid=(\d+)", line)]
+        detail = next((pids[value] for value in all_pids if value in pids), {})
+        if detail:
+            pid = next(value for value in all_pids if value in pids)
         cmdline = detail.get("cmdline", "")
         name = process
         if cmdline:
@@ -148,6 +154,7 @@ def build_services(ss_text: str, pids: dict[int, dict]) -> list[dict]:
             "process": process,
             "pid": pid,
             "cwd": detail.get("cwd", ""),
+            "root": root_from_cmdline(cmdline),
             "cmdline": cmdline[:300],
             "service": name or "unknown",
             "language": patterns.language_of(name) if name else "unknown",
@@ -176,6 +183,28 @@ SYSTEM_ROOTS = (
     "/mnt",
     "/media",
 )
+
+
+def root_from_cmdline(cmdline: str) -> str:
+    """Каталог сервиса из командной строки процесса.
+
+    `php -S 0.0.0.0:8083 -t /srv/warehouse`, `python3 /srv/app/main.py` —
+    cwd у таких процессов часто `/`, и без этой подсказки стек не определяется.
+    """
+    parts = (cmdline or "").split()
+    for index, token in enumerate(parts):
+        if token.startswith("--root=") or token.startswith("--app-dir="):
+            value = token.split("=", 1)[1]
+            if value.startswith("/"):
+                return value.rstrip("/")
+        if token in {"-t", "--root", "--app-dir", "--directory", "-d"} and index + 1 < len(parts):
+            value = parts[index + 1]
+            if value.startswith("/"):
+                return value.rstrip("/")
+    for token in parts:
+        if token.startswith("/") and token.endswith((".py", ".js", ".mjs", ".rb", ".php")):
+            return str(Path(token).parent)
+    return ""
 
 
 def normalise_roots(roots: list[str]) -> list[str]:
@@ -364,7 +393,10 @@ def analyze_sources(sources: dict[str, str], services: list[dict], host: str) ->
     enriched_services = []
     for service in services:
         item = dict(service)
-        stack = stack_for(item.get("cwd", ""), stacks)
+        base = item.get("cwd") or ""
+        if base in {"", "/"}:
+            base = item.get("root") or base
+        stack = stack_for(base, stacks)
         item["stack"] = stack["label"]
         item["languages"] = stack["languages"]
         item["frameworks"] = stack["frameworks"]
@@ -447,6 +479,23 @@ class Audit:
         out = self._run(command, timeout=30)
         return [line.strip() for line in out.splitlines() if line.strip().startswith("/")][:80]
 
+    def _scan_binaries(self, roots: list[str]) -> list[dict]:
+        """Строки ELF-бинарников в каталогах сервисов: оболочка, строки C, флаги."""
+        roots = [root for root in roots if root.startswith("/")]
+        if not roots:
+            return []
+        command = ELF_COMMAND.format(roots=" ".join(shlex.quote(root) for root in roots), limit=8)
+        out = self._run(command, timeout=40)
+        paths = [line.strip() for line in out.splitlines() if line.strip().startswith("/")][:8]
+        if not paths:
+            return []
+        findings: list[dict] = []
+        for path in paths:
+            text = self._run(STRINGS_COMMAND.format(path=shlex.quote(path)), timeout=30)
+            findings.extend(binaries.scan_strings(text, path))
+        self.log(f"binaries: {len(paths)} files, {len(findings)} findings")
+        return findings
+
     def _read_files(self, paths: list[str]) -> dict[str, str]:
         if not paths:
             return {}
@@ -494,6 +543,10 @@ class Audit:
         sources = self._read_files(sorted(set(files) | set(manifests)))
         self.log(f"read {len(sources)} files; scanning")
         result = analyze_sources(sources, services, self.ssh.label())
+        try:
+            result["findings"].extend(self._scan_binaries(roots))
+        except Exception as exc:  # noqa: BLE001 - бинарники не должны ронять аудит
+            self.log(f"binaries skipped: {type(exc).__name__}: {exc}")
         result["os"] = [line for line in sections.get("os", "").splitlines() if line.strip()][:4]
         result["meta"].update({
             "duration_ms": int((time.time() - started) * 1000),

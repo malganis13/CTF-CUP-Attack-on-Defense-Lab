@@ -521,6 +521,11 @@ python tools/check_cup.py D:/cup2019/2018-attack-defense
 | 2018 | black_exchange | PHP / Laravel | IDOR по чужому счёту, SSRF | 2 находки, IDOR |
 | 2018 | arlington | Python / Django | LaTeX RCE, SSRF, path traversal | 4 находки, path |
 | 2018 | vaultpass | C++ | токен по умолчанию, off-by-one, нулевой байт | 5 находок (пути, строки C) |
+| 2026 | greenhouse | Python + свой движок | use-after-free, обрезка URL по `#`, гонка | 5 (IDOR по `WHERE id=?`) |
+| 2026 | orbital_navigation | Rust | source_id, TOCTOU в export, геометрия | 4 (пути) |
+| 2026 | lighthouse | C++ | chosen-plaintext по FEAL | 14 (строки C, SQL по id) |
+| 2026 | starpost | Flask + Postgres | promo без идемпотентности, обход HMAC в курсоре, prefix-match LFI | 11 (logic, path, ssrf, mass-assign) |
+| 2026 | letoctf: smc / tuzemun / skychat | Python / JS / C++ | — | 7 / 4 / 5 |
 
 Что это дало по коду:
 
@@ -535,7 +540,21 @@ python tools/check_cup.py D:/cup2019/2018-attack-defense
   (sshd числился «javascript»).
 - Новые правила: `py-key-truncation`, `py-static-iv`, `py-xor-reuse`,
   `js-weak-sanitizer`, `cs-weak-token` (контекстное), `php-laravel-idor`,
-  `php-laravel-ssrf`. Всего 62.
+  `php-laravel-ssrf`, `crypto-custom-cipher`, `logic-balance-update`,
+  `logic-missing-owner-check`. Всего 65.
+- Сборки и вендоренный код не сканируются: `*.min.js`, `chunk-*`, каталоги
+  `vendor/`, `node_modules/`, заголовки длиннее 800 строк — они давали ложные
+  находки в `three.core.min.js` и `crow/json.h`.
+- Бинарники: ELF ищется по магии, строки читаются `strings` (или `tr`, если
+  binutils нет) и проверяются на `/bin/sh`, `system`, `strcpy`, приватный ключ и
+  флаг. Найденное помечается `binary: true` и строкой 0.
+- Не-HTTP: после неудачного HTTP-запроса читается баннер и пишется протокол —
+  `open: SSH`, `бинарный протокол`, `текст без HTTP`.
+- Стек сервиса берётся не только из `cwd`: если процесс стартовал из `/`,
+  каталог вытаскивается из командной строки (`php -S ... -t /srv/warehouse`) и
+  из любого pid в строке `ss` (у php и node их несколько).
+- `tools/check_cup.py` и `tools/cup_report.py` — прогон по репозиторию Кубка и
+  сводка по нескольким сразу.
 
 Чего на этих Кубках не хватило: логика без регулярки (права на объект внутри
 ORM), бинарники без исходников, не-HTTP протоколы (qdb виден как «порт открыт»),

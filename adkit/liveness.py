@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import re
 import socket
 import time
 
@@ -36,6 +37,43 @@ def _tcp_open(host: str, port: int) -> tuple[bool, int]:
         except OSError:
             code = 1
     return code == 0, int((time.time() - started) * 1000)
+
+
+BANNERS = (
+    (re.compile(rb"^SSH-([\d.]+)"), "SSH"),
+    (re.compile(rb"^HTTP/"), "HTTP"),
+    (re.compile(rb"^-?(?:NOAUTH|ERR|WRONGTYPE)|\*1\r\n\$"), "Redis"),
+    (re.compile(rb"^AMQP"), "AMQP"),
+    (re.compile(rb"^(?:RTSP|SIP)/"), "RTSP/SIP"),
+    (re.compile(rb"^220[ -].*(?:SMTP|Postfix|Exim)", re.I), "SMTP"),
+    (re.compile(rb"^RFB \d"), "VNC"),
+    (re.compile(rb"^\x00\x00\x00\x0a[\d.]+"), "MySQL"),
+    (re.compile(rb"^220 .*FTP", re.I), "FTP"),
+)
+
+
+def _fingerprint(host: str, port: int) -> str:
+    """Кто на порту: баннер читается один раз, без бюджета запросов.
+
+    qdb и подобные протоколы молчат в ответ на POST — для них это
+    «бинарный протокол», и это уже ответ, а не пустота.
+    """
+    try:
+        with socket.create_connection((host, port), timeout=TIMEOUT) as sock:
+            sock.settimeout(0.7)
+            try:
+                data = sock.recv(96)
+            except (socket.timeout, OSError):
+                return ""
+    except OSError:
+        return ""
+    if not data:
+        return ""
+    for pattern, label in BANNERS:
+        if pattern.search(data):
+            return label
+    printable = sum(1 for byte in data[:16] if 32 <= byte < 127)
+    return "текст без HTTP" if printable >= 12 else "бинарный протокол"
 
 
 def _host_part(address: str) -> str:
@@ -128,7 +166,9 @@ def check_one(host: str, entry: dict) -> dict:
         # порт открыт, но говорит не по HTTP (sshd, gRPC, что угодно):
         # для «лежит / не лежит» это живой сервис
         row["state"] = "open"
-        row["note"] = "порт открыт, ответ не HTTP"
+        guess = _fingerprint(host, port)
+        row["protocol"] = guess
+        row["note"] = f"порт открыт: {guess}" if guess else "порт открыт, ответ не HTTP"
     elif 200 <= row["status"] < 400:
         row["state"] = "up"
         row["note"] = f"{row['status']} за {row['ms']} мс"
