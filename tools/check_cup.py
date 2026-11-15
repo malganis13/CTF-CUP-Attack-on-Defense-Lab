@@ -15,7 +15,7 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from adkit import patterns  # noqa: E402
+from adkit import flow, patterns  # noqa: E402
 
 # Что заложено авторами CUP 2019 (exploits/<сервис>/README.md).
 EXPECTED = {
@@ -120,6 +120,12 @@ def collect(root: Path) -> dict[str, dict[str, list[dict]]]:
             except OSError:
                 continue
             items = patterns.scan_text(str(path), text)
+            if not patterns.is_generated(str(path), text.splitlines()):
+                taken = {(item.get("line"), item.get("kind")) for item in items}
+                for item in flow.analyze(str(path), text, patterns.language_of(str(path), text)):
+                    if (item.get("line"), item.get("kind")) in taken:
+                        continue
+                    items.append(item)
             if items:
                 found[str(path.relative_to(root))] = items
         services[service.name] = found

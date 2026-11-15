@@ -1177,3 +1177,34 @@ pre.code { white-space: pre; word-break: normal; }
 #edit-services td { padding: 5px 6px; }
 #edit-services input { min-width: 0; width: 100%; }
 #edit-services .port-input { width: 76px; }
+
+/* ---------- пометка «проверить»: не шаблон, нужен человек ---------- */
+
+.pill.review { color: #e3c6ff; border-color: #5b3f86; background: rgba(150, 90, 210, .18); }
+
+.review-chip {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--muted);
+  font: 600 11px var(--mono);
+  cursor: pointer;
+}
+.review-chip:hover { color: var(--text); }
+.review-chip.active { border-color: #7a4fb0; background: rgba(150, 90, 210, .22); color: #e3c6ff; }
+
+.conf-card.review .n { color: #e3c6ff; }
+.conf-card.review.active { border-color: #7a4fb0; background: rgba(150, 90, 210, .16); }
+
+.review-note {
+  border: 1px solid #4a2a63;
+  border-radius: var(--radius-sm);
+  background: rgba(150, 90, 210, .12);
+  padding: 10px 12px;
+  margin-top: 12px;
+}
+.review-note h3 { margin: 0 0 4px; font-size: 13px; color: #e3c6ff; }
+.review-note p { margin: 0; color: var(--text); font-size: 12.5px; }
+
+.map-head .count.review { color: #e3c6ff; }

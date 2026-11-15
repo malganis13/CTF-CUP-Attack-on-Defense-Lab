@@ -138,6 +138,8 @@ def main() -> int:
               "counts" in (audit.get("confidence") or {}), str(audit.get("confidence")))
         check("у находок есть отпечаток для журнала",
               bool(audit["findings"][0].get("fingerprint")))
+        check("у находок есть пометка «проверить»",
+              all("review" in item for item in audit["findings"]))
 
         tree = get("/api/map")
         check("карта не пустая", len(tree.get("nodes", [])) > 0, str(len(tree.get("nodes", []))))

@@ -64,7 +64,7 @@ const state = {
   demo: false,
   audit: null,
   findings: [],
-  filter: { q: "", sev: "", kind: "", conf: "", status: "" },
+  filter: { q: "", sev: "", kind: "", conf: "", status: "", review: false },
   sort: "rank",
   map: null,
   journal: null,
@@ -825,13 +825,14 @@ function setSevChip(sev) {
 }
 
 function visibleFindings() {
-  const { q, sev, kind, conf, status } = state.filter;
+  const { q, sev, kind, conf, status, review } = state.filter;
   const needle = q.trim().toLowerCase();
   const items = state.findings.filter((item) => {
     if (sev && item.severity !== sev) return false;
     if (kind && item.kind !== kind) return false;
     if (conf && ((item.confidence || {}).level || "unsure") !== conf) return false;
     if (status && (item.status || "open") !== status) return false;
+    if (review && !item.review) return false;
     if (!needle) return true;
     return `${item.kind} ${item.kind_ru || ""} ${item.file} ${item.snippet} ${item.rule} ${item.language}`
       .toLowerCase().includes(needle);
@@ -921,6 +922,29 @@ function renderConfidence() {
     note.appendChild(text);
     box.appendChild(note);
   }
+  const reviewCount = state.findings.filter((item) => item.review).length;
+  const reviewCard = el("div", "conf-card review");
+  if (state.filter.review) reviewCard.classList.add("active");
+  reviewCard.appendChild(el("span", "n", String(reviewCount)));
+  const reviewText = el("div");
+  reviewText.appendChild(el("div", "l", "проверить"));
+  reviewText.appendChild(el("div", "l", "поток и ветки, не шаблон"));
+  reviewCard.appendChild(reviewText);
+  reviewCard.title = "показать только находки, которые нужно проверить руками";
+  reviewCard.addEventListener("click", toggleReview);
+  box.appendChild(reviewCard);
+
+  const button = $("#btn-review");
+  if (button) {
+    button.textContent = "проверить: " + reviewCount;
+    button.classList.toggle("active", !!state.filter.review);
+  }
+}
+
+function toggleReview() {
+  state.filter.review = !state.filter.review;
+  renderConfidence();
+  renderFindings();
 }
 
 function statusPill(finding) {
@@ -944,6 +968,7 @@ function renderFindings() {
     if (state.activeFinding && state.activeFinding.id === finding.id) item.classList.add("active");
     item.appendChild(el("span", "pill " + finding.severity, finding.severity));
     item.appendChild(confPill(finding));
+    if (finding.review) item.appendChild(el("span", "pill review", "проверить"));
     const body = el("div", "body");
     body.appendChild(el("b", null, finding.kind_ru || finding.kind));
     const meta = `${finding.file}:${finding.line}` + (finding.effort_ru ? ` · ${finding.effort_ru}` : "") + (finding.template ? " · шаблон" : "");
@@ -1041,6 +1066,7 @@ function renderFindingDetail(finding) {
   head.appendChild(el("div", "loc", `${finding.file}:${finding.line} · правило ${finding.rule} · ${finding.language || "text"}`));
   const chips = el("div", "row tight");
   chips.appendChild(el("span", "pill " + finding.severity, finding.severity));
+  if (finding.review) chips.appendChild(el("span", "pill review", "проверить"));
   chips.appendChild(el("span", "pill soft", "риск для чекера: " + (finding.checker_risk || "low")));
   if (finding.effort_ru) chips.appendChild(el("span", "pill soft", finding.effort_ru));
   if (finding.template) chips.appendChild(el("span", "pill soft", "шаблонный эксплойт"));
@@ -1081,6 +1107,16 @@ function renderFindingDetail(finding) {
     });
   confBlock.appendChild(statusRow);
   body.appendChild(confBlock);
+
+  if (finding.review) {
+    const note = el("div", "review-note");
+    note.appendChild(el("h3", null, "проверить: это не шаблонное совпадение"));
+    note.appendChild(el("p", null,
+      "Находка получена разбором потока значений или порядка веток. Одна строка её "
+      + "не подтверждает: рядом может стоять проверка, которой не видно в шаблоне. "
+      + "Прочитайте план, отправьте одну пробу и только потом считайте это дырой."));
+    body.appendChild(note);
+  }
 
   const why = el("div", "block");
   why.appendChild(el("h4", null, "почему сработало"));
@@ -1156,6 +1192,7 @@ $$("#status-chips .status-chip").forEach((chip) => {
     renderFindings();
   });
 });
+$("#btn-review").addEventListener("click", toggleReview);
 $("#f-sort").addEventListener("change", (event) => {
   state.sort = event.target.value;
   renderFindings();
@@ -1240,6 +1277,7 @@ function renderMap() {
     const state1 = el("span", "count", "открыто: " + (node.status.open || 0));
     head.appendChild(state1);
     if (node.status.fixed) head.appendChild(el("span", "count", "закрыто: " + node.status.fixed));
+    if (node.review) head.appendChild(el("span", "count review", "проверить: " + node.review));
     card.appendChild(head);
 
     const bodyBox = el("div", "map-files");
@@ -1257,6 +1295,7 @@ function renderMap() {
         row.appendChild(el("span", "line", ":" + (finding.line || 0)));
         row.appendChild(el("span", "dot " + finding.severity));
         row.appendChild(confPill(finding));
+        if (finding.review) row.appendChild(el("span", "pill review", "проверить"));
         row.appendChild(el("span", "snip", finding.snippet || finding.rule));
         if (finding.status !== "open") row.appendChild(statusPill(finding));
         row.addEventListener("click", () => {
@@ -1359,7 +1398,12 @@ function renderJournal() {
   }
   findings.forEach((finding) => {
     const row = el("tr");
-    row.appendChild(el("td", "cell-mono", finding.rule));
+    const ruleCell = el("td", "cell-mono");
+    ruleCell.appendChild(el("span", null, finding.rule));
+    if ((finding.rule || "").startsWith("flow-")) {
+      ruleCell.appendChild(el("span", "pill review", "проверить"));
+    }
+    row.appendChild(ruleCell);
     row.appendChild(el("td", null, finding.kind));
     row.appendChild(el("td", null, finding.severity));
     row.appendChild(el("td", null, finding.confidence || "—"));
@@ -2482,6 +2526,7 @@ function findingRow(finding) {
   const row = el("div", "srow");
   row.appendChild(el("span", "dot " + (finding.severity || "info")));
   row.appendChild(confPill(finding));
+  if (finding.review) row.appendChild(el("span", "pill review", "проверить"));
   row.appendChild(el("span", "t", `${finding.kind_ru || finding.rule}`));
   row.appendChild(el("span", "ln", ":" + (finding.line || 0)));
   row.addEventListener("click", () => {

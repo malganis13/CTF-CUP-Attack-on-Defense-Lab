@@ -236,6 +236,7 @@ def demo_audit() -> dict:
     for item in findings:
         item.setdefault("kind_ru", ru.kind_ru(item.get("kind", "")))
         priority.enrich(item)
+        item["review"] = bool(item.get("flow"))
         if not item.get("confidence"):
             item["confidence"] = confidence.assess(item)
     audit["confidence"] = confidence.assess_many(findings)
@@ -283,6 +284,7 @@ def build_map(audit: dict) -> dict:
                 "severity": "info",
                 "count": 0,
                 "status": {"open": 0, "fixed": 0, "regressed": 0, "ignored": 0},
+                "review": 0,
                 "files": {},
             }
             groups[kind_ru] = node
@@ -290,6 +292,8 @@ def build_map(audit: dict) -> dict:
         if order.get(item.get("severity"), 3) < order.get(node["severity"], 3):
             node["severity"] = item.get("severity")
         node["count"] += 1
+        if item.get("review"):
+            node["review"] += 1
         status = item.get("status") or "open"
         node["status"][status] = node["status"].get(status, 0) + 1
         file = item.get("file") or "—"
@@ -308,6 +312,7 @@ def build_map(audit: dict) -> dict:
             "rule": item.get("rule"),
             "severity": item.get("severity"),
             "status": status,
+            "review": bool(item.get("review")),
             "confidence": confidence.get("level", "unsure"),
             "confidence_ru": confidence.get("level_ru", "не уверен"),
             "score": confidence.get("score", 0),

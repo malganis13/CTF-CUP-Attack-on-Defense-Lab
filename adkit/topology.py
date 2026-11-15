@@ -256,6 +256,7 @@ def _brief(finding: dict) -> dict:
         "confidence_ru": conf.get("level_ru", "не уверен"),
         "status": finding.get("status") or "open",
         "template": bool(finding.get("template")),
+        "review": bool(finding.get("flow")),
         "effort_ru": finding.get("effort_ru") or "",
     }
 

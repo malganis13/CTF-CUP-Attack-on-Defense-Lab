@@ -101,7 +101,18 @@ def assess(finding: dict) -> dict:
     score = 50
     reasons: list[str] = []
 
-    if rule in DIRECT:
+    if rule.startswith("flow-taint-"):
+        score += 30
+        reasons.append("поток значений: связь видна по присваиваниям между строками, "
+                       "а не по одному вызову")
+    elif rule == "flow-guard-bypass":
+        score += 15
+        reasons.append("порядок веток: проверка в функции есть, но один путь выходит раньше неё")
+    elif rule == "flow-auth-by-value":
+        score -= 20
+        reasons.append("авторизация сравнением структуры: дыра только если структуру "
+                       "можно собрать из открытых данных")
+    elif rule in DIRECT:
         score += 40
         reasons.append("правило указывает на сам опасный вызов, а не на похожую форму")
     elif rule in HEURISTIC:
@@ -135,9 +146,13 @@ def assess(finding: dict) -> dict:
         score -= 10
         reasons.append("источник значения в окне не виден: возможно, это конфиг или литерал")
 
-    if any(word in window for word in SANITIZER_WORDS):
+    if any(word in window for word in SANITIZER_WORDS) and rule not in (
+            "flow-guard-bypass", "flow-auth-by-value"):
         score -= 20
         reasons.append("рядом есть проверка или экранирование — вероятно, ложное срабатывание")
+    if rule == "flow-guard-bypass" and finding.get("verify_line"):
+        score += 5
+        reasons.append("видна строка проверки, которую эта ветка обходит")
 
     if severity == "info":
         score -= 15
@@ -151,6 +166,11 @@ def assess(finding: dict) -> dict:
         level = "likely"
     else:
         level = "unsure"
+    # Поток и ветвление — эвристика по определению: подтверждает пробой человек,
+    # поэтому «уверен» у них не бывает даже при высоком счёте.
+    if rule.startswith("flow-") and level == "certain":
+        level = "likely"
+        reasons.append("поток — эвристика: вывод подтверждается пробой, а не одним совпадением")
 
     return {
         "level": level,
@@ -172,6 +192,22 @@ def plan_for(finding: dict) -> list[str]:
     file = finding.get("file") or "файл"
     line = finding.get("line") or 0
 
+    if rule == "flow-guard-bypass":
+        return [
+            f"открой {file}:{line}: найди проверку подписи и ветку, которая выходит раньше неё",
+            "воспроизведи обход: подставь неподписанный токен и добавь параметр, "
+            "который включает раннюю ветку",
+            "убедись, что ветка реагирует именно на данные запроса, а не на константу",
+            "если данные приняли без проверки — это обход аутентификации, а не теория",
+        ]
+    if rule == "flow-auth-by-value":
+        return [
+            f"прочитай {file}:{line} и выпиши, что именно сравнивается: объект, хеш или подпись",
+            "попробуй собрать эквивалент объекта из открытых данных (публичный ключ, "
+            "сохранённое значение, ответ сервера)",
+            "если эквивалент принимается без секрета — проверка обходится",
+            "если для сборки нужен секрет — это не дыра, а нормальная проверка",
+        ]
     if "SQL" in kind:
         return [
             f"открой {file}:{line} и проверь, что {param} действительно приходит из запроса",

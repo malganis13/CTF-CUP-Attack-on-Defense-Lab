@@ -96,6 +96,14 @@ EFFORT = {
     "py-owner-from-request": 1,
     "dj-auto-approved": 1,
     "cs-dead-ttl": 2,
+    "flow-taint-sql": 1,
+    "flow-taint-cmd": 2,
+    "flow-taint-path": 2,
+    "flow-taint-code": 2,
+    "flow-taint-ssrf": 3,
+    "flow-taint-template": 3,
+    "flow-guard-bypass": 3,
+    "flow-auth-by-value": 3,
 }
 
 # Дыры, под которые есть готовый публичный запрос: их пробуют в первом раунде.
@@ -141,6 +149,8 @@ TEMPLATE = {
     "php-upload",
     "deserialization",
     "php-unserialize",
+    "flow-taint-sql",
+    "flow-taint-cmd",
 }
 
 SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2, "info": 3}

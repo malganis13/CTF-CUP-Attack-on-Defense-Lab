@@ -58,6 +58,9 @@ KIND_RU = {
     "Out of bounds": "Выход за границу массива",
     "Business logic: auto-approved relation": "Связь подтверждается сама",
     "Business logic: dead branch": "Ветка, которая не срабатывает",
+    "Broken authentication": "Сломанная аутентификация",
+    "Code execution": "Выполнение кода",
+    "Template injection": "SSTI: инъекция в шаблон",
 }
 
 # id правила -> (почему опасно, как чинить)

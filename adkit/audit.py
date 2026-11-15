@@ -13,7 +13,7 @@ import time
 import zipfile
 from pathlib import Path
 
-from . import binaries, confidence, cve, deps, elf, patterns, priority, ru
+from . import binaries, confidence, cve, deps, elf, flow, patterns, priority, ru
 from .binaries import ELF_COMMAND, FETCH_COMMAND, STRINGS_COMMAND
 from .languages import detect_stacks, stack_for
 from .ssh import BaseSSH
@@ -379,6 +379,20 @@ def analyze_sources(sources: dict[str, str], services: list[dict], host: str,
             if detail:
                 finding["param"], read_line = detail
                 finding["endpoint"] = attach_endpoint(file_endpoints, lines, read_line, index)
+        # Поток значений и порядок веток: строка их не видит, файл — видит.
+        extra: list[dict] = []
+        if not patterns.is_generated(path, lines):
+            taken = {(item.get("line"), item.get("kind")) for item in file_findings}
+            for item in flow.analyze(path, text, language):
+                if (item.get("line"), item.get("kind")) in taken:
+                    continue
+                index = int(item.get("line", 1)) - 1
+                detail = guess_param_detail(lines, index)
+                if detail:
+                    item["param"], read_line = detail
+                    item["endpoint"] = attach_endpoint(file_endpoints, lines, read_line, index)
+                extra.append(item)
+        file_findings.extend(extra)
         findings.extend(file_findings)
         endpoints.extend(file_endpoints)
         endpoints.extend(patterns.map_endpoints(path, text))
@@ -417,6 +431,9 @@ def analyze_sources(sources: dict[str, str], services: list[dict], host: str,
             item["patch_ru"] = ru.patch_ru(item.get("rule", ""), item.get("patch", ""))
         priority.enrich(item)
         item["confidence"] = confidence.assess(item)
+        # «Проверить» — не уровень важности, а пометка метода: находка получена
+        # потоком/ветвлением, а не шаблоном. Такие разбирают руками.
+        item["review"] = bool(item.get("flow"))
     findings.sort(key=priority.sort_key)
     confidence_summary = confidence.assess_many(findings)
 

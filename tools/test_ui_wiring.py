@@ -54,11 +54,13 @@ def main() -> int:
     check("в правилах есть сброс фильтра",
           "btn-rules-reset" in JS and "resetRulesFilters" in JS)
     check("сброс возвращает сортировку", "resetSort" in JS and "#rules-sev .sev-chip" in JS)
+    check("есть пометка «проверить»", 'pill review' in JS and 'btn-review' in JS)
+    check("фильтр «проверить» подключён", "state.filter.review" in JS and "toggleReview" in JS)
 
     unsure = "не уверен" in JS and "certain" in JS
     check("уверенность отображается", unsure)
 
-    total = 16
+    total = 18
     print(f"\n{'пройдено' if FAILED == 0 else 'провалено'}: {total - FAILED}/{total}")
     return 0 if FAILED == 0 else 1
 
