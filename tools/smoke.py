@@ -101,6 +101,18 @@ def main() -> int:
         check("state has backend", bool(state.get("backend")))
         check("rules registered", state.get("rules", 0) >= 15, str(state.get("rules")))
 
+        print("target")
+        services = get("/api/target/services")
+        check("service discovery returns rows", len(services.get("rows") or []) >= 3,
+              str(len(services.get("rows") or [])))
+        connection = post("/api/test", {})
+        check("connection test names its target", "демо" in (connection.get("label") or ""),
+              str(connection.get("label")))
+        rotated = post("/api/target/password", {"user": "root"})
+        check("password rotation is demo-safe",
+              rotated.get("demo") is True and len(rotated.get("password") or "") >= 12,
+              str(rotated.get("user")))
+
         print("audit")
         audit = get("/api/last")
         check("audit returned", isinstance(audit.get("findings"), list))

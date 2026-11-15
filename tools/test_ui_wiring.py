@@ -56,11 +56,18 @@ def main() -> int:
     check("сброс возвращает сортировку", "resetSort" in JS and "#rules-sev .sev-chip" in JS)
     check("есть пометка «проверить»", 'pill review' in JS and 'btn-review' in JS)
     check("фильтр «проверить» подключён", "state.filter.review" in JS and "toggleReview" in JS)
+    check("поле пароля видно в подключении",
+          'id="cfg-password"' in HTML and 'id="password-row"' in HTML and "hidden" not in
+          HTML.split('id="password-row"')[1].split(">")[0])
+    check("смена пароля на цели подключена",
+          'id="btn-rotate"' in HTML and 'api("/api/target/password"' in JS)
+    check("сервисы на цели подключены",
+          'id="btn-scan-services"' in HTML and 'api("/api/target/services"' in JS)
 
     unsure = "не уверен" in JS and "certain" in JS
     check("уверенность отображается", unsure)
 
-    total = 18
+    total = 21
     print(f"\n{'пройдено' if FAILED == 0 else 'провалено'}: {total - FAILED}/{total}")
     return 0 if FAILED == 0 else 1
 

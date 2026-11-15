@@ -47,7 +47,7 @@ def transient(stderr: str) -> bool:
 
 
 class BaseSSH:
-    def run(self, command: str, timeout: int = 30) -> tuple[int, str, str]:
+    def run(self, command: str, timeout: int = 30, stdin: str | None = None) -> tuple[int, str, str]:
         raise NotImplementedError
 
     def read_file(self, path: str, max_bytes: int = 262144) -> bytes:
@@ -65,7 +65,8 @@ class BaseSSH:
 
 class ParamikoSSH(BaseSSH):
     def __init__(self, host: str, port: int, user: str, password: str | None = None,
-                 key_path: str | None = None, passphrase: str | None = None) -> None:
+                 key_path: str | None = None, passphrase: str | None = None,
+                 password_only: bool = False) -> None:
         self.host = host
         self.port = port
         self.user = user
@@ -84,8 +85,8 @@ class ParamikoSSH(BaseSSH):
                     timeout=8,
                     banner_timeout=8,
                     auth_timeout=8,
-                    allow_agent=True,
-                    look_for_keys=True,
+                    allow_agent=not password_only,
+                    look_for_keys=not password_only,
                 )
                 return
             except Exception as exc:  # noqa: BLE001 - retried below
@@ -106,9 +107,14 @@ class ParamikoSSH(BaseSSH):
             total += len(chunk)
         return b"".join(chunks)
 
-    def run(self, command: str, timeout: int = 30) -> tuple[int, str, str]:
+    def run(self, command: str, timeout: int = 30,
+            stdin: str | None = None) -> tuple[int, str, str]:
         try:
-            _, stdout, stderr = self.client.exec_command(command, timeout=timeout)
+            stream, stdout, stderr = self.client.exec_command(command, timeout=timeout)
+            if stdin is not None:
+                stream.write(stdin.encode("utf-8"))
+                stream.flush()
+            stream.channel.shutdown_write()
             out = self._read(stdout, 2_000_000)
             err = self._read(stderr, 200_000)
             code = stdout.channel.recv_exit_status()
@@ -173,8 +179,9 @@ class OpenSSHSSH(BaseSSH):
         args += [f"{self.user}@{self.host}", "--"]
         return args
 
-    def run(self, command: str, timeout: int = 30) -> tuple[int, str, str]:
-        proc = self._exec([command], timeout)
+    def run(self, command: str, timeout: int = 30,
+            stdin: str | None = None) -> tuple[int, str, str]:
+        proc = self._exec([command], timeout, stdin)
         return (
             proc.returncode,
             proc.stdout.decode("utf-8", "replace"),
@@ -188,11 +195,18 @@ class OpenSSHSSH(BaseSSH):
             raise SSHError(proc.stderr.decode("utf-8", "replace").strip() or f"read failed: {path}")
         return proc.stdout
 
-    def _exec(self, args: list[str], timeout: int) -> subprocess.CompletedProcess:
+    def _exec(self, args: list[str], timeout: int,
+              stdin: str | None = None) -> subprocess.CompletedProcess:
         proc: subprocess.CompletedProcess | None = None
+        payload = stdin.encode("utf-8") if stdin is not None else None
         for attempt in range(RETRIES):
             try:
-                proc = subprocess.run(self._base() + args, capture_output=True, timeout=timeout)
+                proc = subprocess.run(
+                    self._base() + args,
+                    input=payload,
+                    capture_output=True,
+                    timeout=timeout,
+                )
             except FileNotFoundError as exc:
                 raise SSHError("OpenSSH client not found in PATH") from exc
             except subprocess.TimeoutExpired as exc:
@@ -232,11 +246,22 @@ class OpenSSHSSH(BaseSSH):
         return f"{self.user}@{self.host}:{self.port} (openssh)"
 
 
+def local_hint(host: str, error: str) -> str:
+    """Подсказка для локального полигона: WSL засыпает и порт пропадает."""
+    low = (error or "").lower()
+    if host in {"127.0.0.1", "localhost", "::1"} and any(
+            marker in low for marker in ("refused", "timed out", "unreachable")):
+        return ("локальный полигон не отвечает: WSL уснул. Запустите `wsl -d kali-linux` "
+                "и повторите; sshd слушает 2222 внутри дистрибутива.")
+    return ""
+
+
 def backend_name() -> str:
     return "paramiko" if paramiko is not None else "openssh"
 
 
-def connect(target: dict, password: str | None = None) -> BaseSSH:
+def connect(target: dict, password: str | None = None,
+            password_only: bool = False) -> BaseSSH:
     host = (target.get("host") or "").strip()
     user = (target.get("user") or "").strip()
     if not host or not user:
@@ -244,10 +269,17 @@ def connect(target: dict, password: str | None = None) -> BaseSSH:
     port = int(target.get("port") or 22)
     key_path = (target.get("key_path") or "").strip() or None
     passphrase = target.get("passphrase") or None
+    auth = (target.get("auth") or "").strip()
+    if auth == "password" and not password and not password_only:
+        raise SSHError("выбран вход по паролю, но пароль не задан: вкладка «Подключение»")
+    if password_only:
+        key_path = None
     if paramiko is not None:
-        return ParamikoSSH(host, port, user, password=password, key_path=key_path, passphrase=passphrase)
+        return ParamikoSSH(host, port, user, password=password, key_path=key_path,
+                           passphrase=passphrase, password_only=password_only)
     if password:
-        raise SSHError("password auth needs paramiko; install it or use a key")
+        raise SSHError("вход по паролю требует paramiko: python -m pip install paramiko "
+                       "(в собранном exe он уже внутри)")
     return OpenSSHSSH(host, port, user, key_path=key_path)
 
 

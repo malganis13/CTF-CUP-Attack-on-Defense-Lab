@@ -71,6 +71,7 @@ const state = {
   stand: null,
   standSelected: null,
   standEdit: false,
+  scan: null,
   svcFilter: "",
   liveness: null,
   preflight: null,
@@ -127,7 +128,12 @@ async function api(path, options) {
   let body = null;
   try { body = text ? JSON.parse(text) : null; } catch (_) { body = { raw: text }; }
   if (!response.ok) {
-    throw new Error((body && (body.error || body.raw)) || response.statusText);
+    const error = new Error((body && (body.error || body.raw)) || response.statusText);
+    if (body) {
+      error.hint = body.hint || "";
+      error.body = body;
+    }
+    throw error;
   }
   return body;
 }
@@ -320,12 +326,13 @@ function fillForm() {
   $("#cfg-cookie-b").placeholder = state.config.has_cookie_b
     ? "кука B уже в памяти — введите новую, чтобы заменить"
     : "session=… другого пользователя";
-  $("#password-row").hidden = $("#cfg-auth").value !== "password";
+  $("#rot-user").value = target.user || "root";
+  $("#cfg-password").placeholder = state.config.has_password
+    ? "пароль уже в памяти — введите новый, чтобы заменить"
+    : "только в памяти";
 }
 
-$("#cfg-auth").addEventListener("change", () => {
-  $("#password-row").hidden = $("#cfg-auth").value !== "password";
-});
+// Поле пароля видно всегда: в игре вход чаще по паролю, а ключ — для полигона.
 
 $("#btn-save").addEventListener("click", async () => {
   const status = $("#connect-status");
@@ -362,9 +369,48 @@ $("#btn-test").addEventListener("click", async () => {
   try {
     const result = await api("/api/test", { method: "POST", body: "{}" });
     log.hidden = false;
-    log.textContent = `бэкенд: ${result.backend}\n$ id\n${result.output}`;
-    setStatus(status, "связь есть", "ok");
+    log.textContent = `${result.label}\nбэкенд: ${result.backend}\n$ id\n${result.output}`;
+    setStatus(status, "связь есть · " + result.label, "ok");
     toast("Связь установлена", "ok");
+  } catch (error) {
+    log.hidden = false;
+    log.textContent = error.message + (error.hint ? `\n\n${error.hint}` : "");
+    setStatus(status, "не вышло", "bad");
+    toast(error.message + (error.hint ? `: ${error.hint}` : ""), "bad");
+  }
+});
+
+$("#btn-rotate").addEventListener("click", async () => {
+  const status = $("#rotate-status");
+  const log = $("#rotate-log");
+  const user = ($("#rot-user").value || "").trim() || "root";
+  const password = $("#rot-pass").value;
+  const repeat = $("#rot-pass2").value;
+  if (password && password !== repeat) {
+    setStatus(status, "пароли не совпадают", "bad");
+    return;
+  }
+  const where = (state.config.target || {}).host || "цель";
+  const question = password
+    ? `Сменить пароль ${user} на ${where}? Старый перестанет работать сразу.`
+    : `Сгенерировать новый пароль для ${user} на ${where}? Старый перестанет работать сразу.`;
+  if (!confirm(question)) return;
+  setStatus(status, "меняю…");
+  try {
+    const result = await api("/api/target/password", {
+      method: "POST",
+      body: JSON.stringify({ user, password }),
+    });
+    log.hidden = false;
+    log.textContent = [
+      `пользователь: ${result.user}`,
+      `пароль: ${result.password}${result.generated ? "  (сгенерирован)" : ""}`,
+      `вход новым паролем: ${result.verified ? "да" : "нет"}`,
+      result.note || "",
+    ].filter(Boolean).join("\n");
+    setStatus(status, result.verified ? "пароль сменён и проверен" : "пароль сменён", "ok");
+    toast(result.verified ? "пароль сменён, вход проверен" : "пароль сменён", "ok");
+    if (result.demo) return;
   } catch (error) {
     log.hidden = false;
     log.textContent = error.message;
@@ -2776,6 +2822,73 @@ $("#btn-stand-cancel").addEventListener("click", closeStandEditor);
 $("#btn-stand-save").addEventListener("click", saveStand);
 $("#btn-stand-import").addEventListener("click", importStand);
 $("#btn-stand-add").addEventListener("click", () => addServiceRow(null));
+
+/* ---------- сервисы на цели ---------- */
+
+async function scanServices() {
+  const status = $("#scan-status");
+  setStatus(status, "опрашиваю цель…");
+  try {
+    const result = await api("/api/target/services");
+    state.scan = result;
+    renderScan(result);
+    toast(`на цели строк: ${result.count || 0}`, "ok");
+  } catch (error) {
+    setStatus(status, error.message, "bad");
+    toast(error.message, "bad");
+  }
+}
+
+function renderScan(result) {
+  const body = $("#scan-table tbody");
+  body.textContent = "";
+  const rows = result.rows || [];
+  rows.forEach((row) => {
+    const tr = el("tr");
+    tr.appendChild(el("td", "cell-mono", row.port ? String(row.port) : "—"));
+    tr.appendChild(el("td", "cell-mono", row.bind || "—"));
+    tr.appendChild(el("td", null, row.process || "—"));
+    tr.appendChild(el("td", "cell-mono", row.unit || "—"));
+    tr.appendChild(el("td", "cell-mono", row.cwd || "—"));
+    const kind = { port: "порт", unit: "юнит", docker: "docker" }[row.kind] || row.kind || "";
+    tr.appendChild(el("td", null, kind));
+    body.appendChild(tr);
+  });
+  $("#scan-wrap").hidden = rows.length === 0;
+  $("#scan-empty").hidden = rows.length > 0;
+  $("#btn-import-services").hidden = !rows.some((row) => row.port);
+  const policy = result.policy || {};
+  const bits = [];
+  if (result.label) bits.push(result.label);
+  if (policy.permitrootlogin) bits.push("root: " + policy.permitrootlogin);
+  setStatus($("#scan-status"), bits.join(" · ") || `${rows.length} строк`, "ok");
+}
+
+async function importScanned() {
+  const status = $("#scan-status");
+  const rows = (state.scan && state.scan.rows) || [];
+  if (!rows.length) return;
+  try {
+    const result = await api("/api/topology/import-services", {
+      method: "POST",
+      body: JSON.stringify({ rows }),
+    });
+    if (state.stand) {
+      state.stand = result.view;
+      renderStand();
+    } else {
+      await loadStand();
+    }
+    setStatus(status, `в стенд добавлено ${result.added}`, "ok");
+    toast(`в стенд добавлено ${result.added}`, "ok");
+  } catch (error) {
+    setStatus(status, error.message, "bad");
+    toast(error.message, "bad");
+  }
+}
+
+$("#btn-scan-services").addEventListener("click", scanServices);
+$("#btn-import-services").addEventListener("click", importScanned);
 
 let standResize = null;
 window.addEventListener("resize", () => {

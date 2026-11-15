@@ -133,9 +133,9 @@
               <input id="cfg-key" placeholder="C:\Users\you\.ssh\id_ed25519" autocomplete="off" spellcheck="false">
               <span class="hint">пусто — используется ssh-агент или ~/.ssh/id_*</span>
             </label>
-            <label class="field wide" id="password-row" hidden>пароль
+            <label class="field wide" id="password-row">пароль
               <input id="cfg-password" type="password" autocomplete="new-password" placeholder="только в памяти">
-              <span class="hint">в config.json не попадает</span>
+              <span class="hint">в config.json не попадает; нужен, когда вход — пароль</span>
             </label>
             <label class="field wide">кука сессии для пробы авторизации
               <input id="cfg-cookie" type="password" autocomplete="off" spellcheck="false" placeholder="session=… из браузера">
@@ -152,6 +152,31 @@
             <span class="status" id="connect-status"></span>
           </div>
           <pre class="log" id="connect-log" hidden style="margin-top:14px"></pre>
+        </div>
+
+        <div class="card" id="rotate-card">
+          <div class="row">
+            <div class="grow">
+              <h2 style="margin:0">Смена пароля на цели</h2>
+              <p class="lead" style="margin:2px 0 0">Один заход по SSH, <code>chpasswd</code> со stdin: пароль не попадает ни в аргументы процесса на цели, ни в <code>config.json</code>, ни в журнал. Старый пароль перестаёт работать сразу.</p>
+            </div>
+          </div>
+          <div class="grid">
+            <label class="field">пользователь
+              <input id="rot-user" placeholder="root" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="field">новый пароль
+              <input id="rot-pass" type="password" autocomplete="new-password" placeholder="пусто — сгенерирую 20 символов">
+            </label>
+            <label class="field">повтор
+              <input id="rot-pass2" type="password" autocomplete="new-password" placeholder="если задали вручную">
+            </label>
+          </div>
+          <div class="row" style="margin-top:12px">
+            <button id="btn-rotate" class="primary">Сменить пароль</button>
+            <span class="status" id="rotate-status"></span>
+          </div>
+          <pre class="log" id="rotate-log" hidden style="margin-top:12px"></pre>
         </div>
 
         <div class="card" id="preflight-card">
@@ -554,6 +579,25 @@
               <div id="stand-side-body"><div class="empty">клик по сервису — покажу его находки</div></div>
             </div>
           </aside>
+        </div>
+
+        <div class="card" style="margin-top:14px" id="scan-card">
+          <div class="row">
+            <div class="grow">
+              <h2 style="margin:0">Сервисы на цели</h2>
+              <p class="lead" style="margin:2px 0 0">Читаю с самой машины: <code>ss -lntp</code>, запущенные юниты systemd, каталоги <code>/srv</code>, <code>/opt</code>, <code>/home</code>, docker. Снаружи ничего не сканирую и на цели ничего не меняю.</p>
+            </div>
+            <button id="btn-scan-services" class="ghost small">опросить цель</button>
+            <button id="btn-import-services" class="ghost small" hidden>в стенд</button>
+            <span class="status" id="scan-status"></span>
+          </div>
+          <div class="table-wrap" id="scan-wrap" hidden style="margin-top:12px">
+            <table id="scan-table">
+              <thead><tr><th>порт</th><th>адрес</th><th>процесс</th><th>юнит</th><th>каталог</th><th>вид</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="lead" id="scan-empty" style="margin:12px 0 0">Ещё не опрашивали. Кнопка делает один SSH-заход и читает только перечисленное.</p>
         </div>
 
         <div class="card" style="margin-top:14px">

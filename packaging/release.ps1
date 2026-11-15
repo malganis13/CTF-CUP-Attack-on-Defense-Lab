@@ -4,7 +4,7 @@
 $ErrorActionPreference = "Stop"
 
 $repo = "malganis13/CTF-CUP-Attack-on-Defense-Lab"
-$tag = "v1.11.0"
+$tag = "v1.12.0"
 $exe = "D:\ad-audit-dist\AD-Audit.exe"
 
 $raw = "protocol=https`nhost=github.com`n`n" | git credential fill
@@ -19,6 +19,20 @@ $headers = @{
 
 $notes = @"
 Инструмент для финала X Кубка CTF России (Attack-Defense).
+
+Новое в 1.12
+- вход по паролю: поле видно всегда, пароль живёт только в памяти; в exe
+  paramiko уже внутри, отдельная установка не нужна;
+- «Проверить связь» печатает точный адрес и бэкенд (root@host:port), поэтому
+  видно, к какой машине на самом деле было подключение;
+- смена пароля на цели: chpasswd со stdin, без пароля в аргументах процесса и
+  в config.json; после смены — проверка входа новым паролем отдельным
+  соединением и показ политики PermitRootLogin;
+- «Сервисы на цели» на вкладке «Стенд»: ss -lntp, юниты systemd, каталоги
+  /srv, /opt, /home, docker ps — один SSH-заход, без сканирования снаружи;
+  кнопка «в стенд» переносит найденные порты в модель;
+- knowledge/vuln.md: как устроен вулнбокс (один хост, много сервисов), какие
+  учётки менять, как не сломать чекер.
 
 Новое в 1.11
 - разбор потока значений: переменная из запроса, доехавшая до опасного вызова
@@ -66,9 +80,9 @@ $notes = @"
 Проверено
 - корпуса Кубка 2018–2026: 11 репозиториев, заложенные дыры находятся,
   регрессия закреплена tools/test_cup_years.py;
-- тесты: smoke 128/128, probe 42/42, authdiff 18/18, deps+cve 21/21,
+- тесты: smoke 131/131, probe 42/42, authdiff 18/18, deps+cve 21/21,
   offline+patch 12/12, confidence 9/9, journal 18/18, topology 34/34,
-  flow 20/20, ui 18/18;
+  flow 20/20, remote 20/20, ui 21/21;
 - compileall и node --check чистые.
 
 Запуск
@@ -79,7 +93,7 @@ $notes = @"
 $body = @{
     tag_name         = $tag
     target_commitish = "ad-audit-1.1"
-    name             = "AD Audit 1.11 — поток значений и ветки"
+    name             = "AD Audit 1.12 — пароли, службы на цели, точный адрес"
     body             = $notes
 } | ConvertTo-Json -Depth 4
 

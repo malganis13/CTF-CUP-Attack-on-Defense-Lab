@@ -23,12 +23,12 @@ from urllib.parse import parse_qs, urlparse
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from adkit import __version__, confidence, drill, fixes, journal, liveness, patch, patterns, preflight, priority, probe, ru, topology
+from adkit import __version__, confidence, drill, fixes, journal, liveness, patch, patterns, preflight, priority, probe, remote, ru, topology
 from adkit.store import Store
 from adkit.audit import Audit, analyze_sources, scan_target
 from adkit.generate import generate_probe, generate_report, pick_endpoint
 from adkit.ratelimit import BUDGET
-from adkit.ssh import SSHError, backend_name, connect, test_connection
+from adkit.ssh import SSHError, backend_name, connect, local_hint, test_connection
 
 def _resource_base() -> Path:
     """Каталог с web/, knowledge/, demo/ — внутри exe или рядом с исходником."""
@@ -578,6 +578,19 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(400, {"error": str(error)})
                 except SSHError as error:
                     self.send_json(502, {"error": str(error)})
+            elif path == "/api/target/services":
+                if SESSION["demo"]:
+                    self.send_json(200, remote.demo_rows())
+                    return
+                target = SESSION["config"].get("target", {})
+                ssh = connect(target, SESSION.get("password"))
+                try:
+                    result = remote.services(ssh)
+                finally:
+                    ssh.close()
+                STORE.log("target-services", count=result.get("count"),
+                          label=result.get("label"))
+                self.send_json(200, result)
             elif path == "/api/compare":
                 history = SESSION.get("history") or []
                 if len(history) < 2:
@@ -594,6 +607,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(200, audit)
             else:
                 self.send_json(404, {"error": "not found"})
+        except remote.RemoteError as exc:
+            self.send_json(400, {"error": str(exc)})
         except Exception as exc:  # noqa: BLE001 - surfaced to the UI
             self.send_json(500, {"error": f"{type(exc).__name__}: {exc}"})
 
@@ -618,15 +633,77 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {"ok": True, "state": public_state()})
             elif path == "/api/test":
                 if SESSION["demo"]:
-                    self.send_json(200, {"ok": True, "output": "demo mode", "backend": "demo"})
+                    self.send_json(200, {"ok": True, "output": "demo mode", "backend": "demo",
+                                         "label": "демо-режим"})
+                    return
+                target = SESSION["config"].get("target", {})
+                host = (target.get("host") or "").strip()
+                ssh = None
+                try:
+                    ssh = connect(target, SESSION.get("password"))
+                    output = test_connection(ssh)
+                    label = ssh.label()
+                except SSHError as exc:
+                    self.send_json(502, {"error": str(exc),
+                                         "hint": local_hint(host, str(exc))})
+                    return
+                finally:
+                    if ssh is not None:
+                        ssh.close()
+                self.send_json(200, {
+                    "ok": True, "output": output, "backend": backend_name(),
+                    "label": label,
+                    "target": {"host": host, "port": int(target.get("port") or 22),
+                               "user": (target.get("user") or "").strip(),
+                               "auth": (target.get("auth") or "key")},
+                })
+            elif path == "/api/target/password":
+                user = (body.get("user") or "").strip()
+                password = body.get("password") or ""
+                generated = False
+                if not password:
+                    password = remote.generate_password()
+                    generated = True
+                if SESSION["demo"]:
+                    self.send_json(200, {
+                        "ok": True, "demo": True, "user": user, "password": password,
+                        "generated": generated, "verified": False,
+                        "note": "демо-режим: команда на цель не отправлена",
+                    })
                     return
                 target = SESSION["config"].get("target", {})
                 ssh = connect(target, SESSION.get("password"))
                 try:
-                    output = test_connection(ssh)
+                    rules = remote.policy(ssh)
+                    remote.rotate_password(ssh, user, password)
                 finally:
                     ssh.close()
-                self.send_json(200, {"ok": True, "output": output, "backend": backend_name()})
+                verified = False
+                note = ""
+                probe_target = dict(target)
+                probe_target["user"] = user
+                probe_target["auth"] = "password"
+                probe_target["key_path"] = ""
+                try:
+                    checker = connect(probe_target, password, password_only=True)
+                    try:
+                        test_connection(checker)
+                        verified = True
+                    finally:
+                        checker.close()
+                except SSHError as exc:
+                    note = str(exc)
+                if user == (target.get("user") or "").strip():
+                    SESSION["password"] = password
+                if not verified and user == "root" and rules.get("permitrootlogin") == "prohibit-password":
+                    note = (note + "; " if note else "") + (
+                        "sshd запрещает вход root по паролю (PermitRootLogin prohibit-password): "
+                        "для входа паролем нужен `PermitRootLogin yes` и перезапуск sshd")
+                STORE.log("password", user=user, verified=verified, generated=generated)
+                self.send_json(200, {
+                    "ok": True, "user": user, "password": password, "generated": generated,
+                    "verified": verified, "policy": rules, "note": note,
+                })
             elif path == "/api/drill/run":
                 drill_id = (body.get("id") or "").strip()
                 if SESSION["demo"]:
@@ -776,6 +853,32 @@ class Handler(BaseHTTPRequestHandler):
                                            SESSION.get("liveness"))
                 STORE.log("topology-import", **info)
                 self.send_json(200, {"ok": True, "view": view, "merge": info})
+            elif path == "/api/topology/import-services":
+                rows = body.get("rows") or []
+                model = topology.load(BASE)
+                added = 0
+                seen = {(item["port"], item["name"].lower()) for item in model["services"]}
+                for row in rows[:remote.MAX_ROWS]:
+                    if not isinstance(row, dict):
+                        continue
+                    port = int(row.get("port") or 0)
+                    name = (row.get("name") or row.get("process") or "").strip()[:48]
+                    if not port or not name:
+                        continue
+                    if (port, name.lower()) in seen:
+                        continue
+                    model["services"].append({
+                        "name": name, "port": port, "language": "",
+                        "cwd": (row.get("cwd") or "").strip()[:200],
+                        "url": "", "notes": "найдено на цели",
+                    })
+                    seen.add((port, name.lower()))
+                    added += 1
+                saved = topology.save(model, BASE)
+                view = topology.build_view(saved, SESSION.get("last_audit"),
+                                           SESSION.get("liveness"))
+                STORE.log("topology-scan", added=added, rows=len(rows))
+                self.send_json(200, {"ok": True, "view": view, "added": added})
             elif path == "/api/status":
                 mark = (body.get("fingerprint") or "").strip()
                 status = (body.get("status") or "").strip()
@@ -802,6 +905,8 @@ class Handler(BaseHTTPRequestHandler):
                 "error": f"бюджет запросов исчерпан, повтор через {int(exc.retry_after) + 1} с",
                 "retry_after": round(exc.retry_after, 1),
             })
+        except remote.RemoteError as exc:
+            self.send_json(400, {"error": str(exc)})
         except SSHError as exc:
             self.send_json(502, {"error": str(exc)})
         except Exception as exc:  # noqa: BLE001 - surfaced to the UI
