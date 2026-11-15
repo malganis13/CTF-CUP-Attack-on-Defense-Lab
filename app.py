@@ -15,6 +15,7 @@ import json
 import mimetypes
 import secrets
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -22,7 +23,7 @@ from urllib.parse import parse_qs, urlparse
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from adkit import __version__, drill, fixes, liveness, patch, patterns, preflight, probe, ru
+from adkit import __version__, confidence, drill, fixes, journal, liveness, patch, patterns, preflight, priority, probe, ru
 from adkit.store import Store
 from adkit.audit import Audit, analyze_sources, scan_target
 from adkit.generate import generate_probe, generate_report, pick_endpoint
@@ -80,6 +81,14 @@ SESSION: dict = {
 JOBS: dict[str, dict] = {}
 SHUTDOWN = threading.Event()
 STORE = Store(BASE)
+try:
+    JOURNAL = journal.Journal(BASE)
+except Exception as exc:  # noqa: BLE001 - журнал не должен мешать запуску
+    # Каталог state/ может быть недоступен (чужая машина, только чтение).
+    # Журнал тогда живёт во временном каталоге: хуже, но приложение работает.
+    JOURNAL = journal.Journal(Path(tempfile.mkdtemp(prefix="ad-journal-")))
+    print(f"journal: state/ недоступен ({type(exc).__name__}: {exc}), "
+          f"временный каталог {JOURNAL.path.parent}", file=sys.stderr)
 
 
 def load_config() -> dict:
@@ -118,6 +127,7 @@ def public_state() -> dict:
         "liveness": SESSION.get("liveness") or None,
         "rules": len(patterns.RULES),
         "budget": probe.BUDGET.peek(),
+        "journal": JOURNAL.summary(),
     }
 
 
@@ -148,7 +158,22 @@ MAX_HISTORY = 8
 
 
 def remember_audit(audit: dict) -> None:
-    """Кладёт аудит в историю: по ней видно, что закрыл патч."""
+    """Кладёт аудит в историю и в журнал: по ним видно, что закрыл патч.
+
+    Журнал — вспомогательная база: если state/ недоступен для записи, аудит всё
+    равно должен показать находки, поэтому отпечатки считаются и без неё.
+    """
+    statuses: dict[str, str] = {}
+    try:
+        changed = JOURNAL.record(audit)
+        statuses = {row["fingerprint"]: row["status"] for row in JOURNAL.findings(limit=2000)}
+    except Exception as exc:  # noqa: BLE001 - журнал не должен ронять аудит
+        changed = {"error": f"{type(exc).__name__}: {exc}"}
+    for item in audit.get("findings") or []:
+        mark = journal.fingerprint(item)
+        item["fingerprint"] = mark
+        item["status"] = statuses.get(mark, "open")
+    audit["journal"] = changed
     entry = STORE.remember_audit(audit)
     history = SESSION.setdefault("history", [])
     history.append({
@@ -159,7 +184,8 @@ def remember_audit(audit: dict) -> None:
     })
     del history[:-MAX_HISTORY]
     STORE.log("audit", host=entry.get("host"), findings=entry["count"],
-              services=entry.get("services"), files=entry.get("files"))
+              services=entry.get("services"), files=entry.get("files"),
+              fixed=changed.get("fixed"), regressed=changed.get("regressed"))
 
 
 def compare_audits(before_id: str, after_id: str) -> dict:
@@ -203,7 +229,17 @@ def compare_audits(before_id: str, after_id: str) -> dict:
 def demo_audit() -> dict:
     if not DEMO_AUDIT.is_file():
         raise RuntimeError("demo/audit.json missing; run tools/build_demo.py")
-    return json.loads(DEMO_AUDIT.read_text(encoding="utf-8"))
+    audit = json.loads(DEMO_AUDIT.read_text(encoding="utf-8"))
+    # Демо-снимок лежит готовым файлом, поэтому обогащение прогоняется здесь:
+    # тот же расчёт, что и на живом аудите, иначе интерфейс в демо расходится с ним.
+    findings = audit.get("findings") or []
+    for item in findings:
+        item.setdefault("kind_ru", ru.kind_ru(item.get("kind", "")))
+        priority.enrich(item)
+        if not item.get("confidence"):
+            item["confidence"] = confidence.assess(item)
+    audit["confidence"] = confidence.assess_many(findings)
+    return audit
 
 
 def demo_resolve(path: str) -> Path | None:
@@ -231,6 +267,125 @@ def demo_resolve(path: str) -> Path | None:
         if len(hits) == 1:
             return hits[0]
     return None
+
+
+def build_map(audit: dict) -> dict:
+    """Иерархия: класс → файл → находка, с цветом по важности и статусом."""
+    findings = audit.get("findings") or []
+    groups: dict[str, dict] = {}
+    for item in findings:
+        kind_ru = item.get("kind_ru") or item.get("kind") or "прочее"
+        node = groups.get(kind_ru)
+        if node is None:
+            node = {
+                "kind": item.get("kind"),
+                "kind_ru": kind_ru,
+                "severity": "info",
+                "count": 0,
+                "status": {"open": 0, "fixed": 0, "regressed": 0, "ignored": 0},
+                "files": {},
+            }
+            groups[kind_ru] = node
+        order = {"high": 0, "medium": 1, "low": 2, "info": 3}
+        if order.get(item.get("severity"), 3) < order.get(node["severity"], 3):
+            node["severity"] = item.get("severity")
+        node["count"] += 1
+        status = item.get("status") or "open"
+        node["status"][status] = node["status"].get(status, 0) + 1
+        file = item.get("file") or "—"
+        bucket = node["files"].setdefault(file, {
+            "file": file,
+            "severity": "info",
+            "findings": [],
+        })
+        if order.get(item.get("severity"), 3) < order.get(bucket["severity"], 3):
+            bucket["severity"] = item.get("severity")
+        confidence = item.get("confidence") or {}
+        bucket["findings"].append({
+            "id": item.get("id"),
+            "fingerprint": item.get("fingerprint"),
+            "line": item.get("line"),
+            "rule": item.get("rule"),
+            "severity": item.get("severity"),
+            "status": status,
+            "confidence": confidence.get("level", "unsure"),
+            "confidence_ru": confidence.get("level_ru", "не уверен"),
+            "score": confidence.get("score", 0),
+            "snippet": (item.get("snippet") or "")[:160],
+            "kind_ru": item.get("kind_ru"),
+            "template": bool(item.get("template")),
+            "effort_ru": item.get("effort_ru"),
+        })
+
+    tree = []
+    for node in sorted(groups.values(), key=lambda entry: (-entry["count"], entry["kind_ru"])):
+        files = []
+        for bucket in sorted(node["files"].values(), key=lambda entry: entry["file"]):
+            bucket["findings"].sort(key=lambda entry: int(entry.get("line") or 0))
+            files.append(bucket)
+        tree.append({**{key: value for key, value in node.items() if key != "files"}, "files": files})
+
+    statuses: dict[str, int] = {}
+    for item in findings:
+        status = item.get("status") or "open"
+        statuses[status] = statuses.get(status, 0) + 1
+    return {
+        "nodes": tree,
+        "total": len(findings),
+        "status": statuses,
+        "confidence": (audit.get("confidence") or {}),
+    }
+
+
+def search_all(query: str, limit: int = 40) -> dict:
+    """Поиск по находкам, правилам и базе знаний — одним ответом."""
+    words = [word for word in query.lower().split() if word]
+    if not words:
+        return {"query": "", "findings": [], "rules": [], "knowledge": [], "total": 0}
+
+    def hit(text: str) -> bool:
+        low = (text or "").lower()
+        return all(word in low for word in words)
+
+    findings = []
+    for item in (SESSION.get("last_audit") or {}).get("findings") or []:
+        haystack = " ".join(str(item.get(key) or "") for key in
+                            ("rule", "kind", "kind_ru", "file", "snippet", "why", "patch_ru"))
+        if hit(haystack):
+            findings.append({
+                "id": item.get("id"), "rule": item.get("rule"),
+                "kind_ru": item.get("kind_ru"), "severity": item.get("severity"),
+                "file": item.get("file"), "line": item.get("line"),
+                "status": item.get("status"),
+                "confidence": (item.get("confidence") or {}).get("level"),
+            })
+
+    rules = []
+    for rule in patterns.rule_catalog():
+        haystack = " ".join(str(rule.get(key) or "") for key in ("id", "kind", "why", "patch"))
+        haystack += " " + ru.patch_ru(rule.get("id", ""), rule.get("patch", ""))
+        if hit(haystack):
+            rules.append({"id": rule["id"], "kind": rule["kind"],
+                          "kind_ru": ru.kind_ru(rule["kind"]), "severity": rule["severity"]})
+
+    knowledge = []
+    if KNOWLEDGE.is_dir():
+        for path in sorted(KNOWLEDGE.glob("*.md")):
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if hit(text) or hit(path.stem):
+                line = next((number for number, item in enumerate(text.splitlines(), 1)
+                             if hit(item)), 1)
+                context = text.splitlines()[max(0, line - 2):line + 1]
+                knowledge.append({"name": path.stem, "line": line,
+                                  "preview": " ".join(part.strip() for part in context)[:220]})
+
+    return {
+        "query": query,
+        "findings": findings[:limit],
+        "rules": rules[:limit],
+        "knowledge": knowledge[:limit],
+        "total": len(findings) + len(rules) + len(knowledge),
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -343,6 +498,30 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/ops":
                 limit = int(query.get("limit", ["100"])[0] or 100)
                 self.send_json(200, {"ops": STORE.ops(limit), "dir": str(STORE.dir)})
+            elif path == "/api/journal":
+                self.send_json(200, {
+                    "summary": JOURNAL.summary(),
+                    "runs": JOURNAL.runs(20),
+                    "findings": JOURNAL.findings(limit=500),
+                    "events": JOURNAL.events(60),
+                    "status_ru": journal.STATUS_RU,
+                    "dir": str(JOURNAL.path),
+                })
+            elif path == "/api/journal/diff":
+                before = query.get("before", [""])[0]
+                after = query.get("after", [""])[0]
+                result = JOURNAL.diff(int(before) if before.isdigit() else None,
+                                      int(after) if after.isdigit() else None)
+                self.send_json(200, result)
+            elif path == "/api/map":
+                audit = SESSION.get("last_audit")
+                if not audit:
+                    self.send_json(200, {"nodes": [], "total": 0, "status": {},
+                                         "reason": "сначала аудит"})
+                else:
+                    self.send_json(200, build_map(audit))
+            elif path == "/api/search":
+                self.send_json(200, search_all(query.get("q", [""])[0]))
             elif path == "/api/liveness":
                 if SESSION.get("demo"):
                     self.send_json(200, {
@@ -568,6 +747,22 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(400, {"error": "run an audit first"})
                     return
                 self.send_json(200, {"markdown": generate_report(audit)})
+            elif path == "/api/status":
+                mark = (body.get("fingerprint") or "").strip()
+                status = (body.get("status") or "").strip()
+                note = (body.get("note") or "").strip()
+                if not mark or status not in journal.STATUSES:
+                    self.send_json(400, {
+                        "error": "нужен fingerprint и статус: "
+                                 + " | ".join(journal.STATUSES),
+                    })
+                    return
+                result = JOURNAL.set_status(mark, status, note)
+                for item in (SESSION.get("last_audit") or {}).get("findings") or []:
+                    if item.get("fingerprint") == mark:
+                        item["status"] = status
+                STORE.log("status", fingerprint=mark, status=status, note=note)
+                self.send_json(200, result)
             elif path == "/api/shutdown":
                 self.send_json(200, {"stopping": True})
                 SHUTDOWN.set()

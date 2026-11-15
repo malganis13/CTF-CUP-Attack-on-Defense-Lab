@@ -128,6 +128,52 @@ def main() -> int:
             all(item.get("language") for item in audit["findings"]),
         )
 
+        print("неуверенность, карта, журнал")
+        check("у каждой находки есть уверенность",
+              all((item.get("confidence") or {}).get("level") in {"certain", "likely", "unsure"}
+                  for item in audit["findings"]))
+        check("у каждой находки есть план проверки",
+              all((item.get("confidence") or {}).get("plan") for item in audit["findings"]))
+        check("сводка уверенности посчитана",
+              "counts" in (audit.get("confidence") or {}), str(audit.get("confidence")))
+        check("у находок есть отпечаток для журнала",
+              bool(audit["findings"][0].get("fingerprint")))
+
+        tree = get("/api/map")
+        check("карта не пустая", len(tree.get("nodes", [])) > 0, str(len(tree.get("nodes", []))))
+        check("карта сходится с находками",
+              sum(node["count"] for node in tree.get("nodes", [])) == len(audit["findings"]))
+        check("в карте есть открытые", tree.get("status", {}).get("open", 0) > 0,
+              str(tree.get("status")))
+
+        journal = get("/api/journal")
+        check("журнал завёл прогон", (journal.get("summary") or {}).get("runs", 0) >= 1)
+        check("журнал хранит находки",
+              len(journal.get("findings", [])) == len(audit["findings"]),
+              f"{len(journal.get('findings', []))} vs {len(audit['findings'])}")
+
+        mark = audit["findings"][0]["fingerprint"]
+        answer = post("/api/status", {"fingerprint": mark, "status": "ignored"})
+        check("статус принимается", answer.get("ok") is True, str(answer))
+        check("статус сохранён",
+              any(row["fingerprint"] == mark and row["status"] == "ignored"
+                  for row in get("/api/journal")["findings"]))
+        post("/api/status", {"fingerprint": mark, "status": "open"})
+        try:
+            post("/api/status", {"fingerprint": mark, "status": "nonsense"})
+            rejected = False
+        except urllib.error.HTTPError as error:
+            rejected = error.code == 400
+        check("неизвестный статус отвергнут", rejected)
+
+        diff = get("/api/journal/diff")
+        check("сравнение отвечает", "available" in diff, str(diff)[:80])
+        found = get("/api/search?q=sql")
+        check("поиск находит находки", len(found.get("findings", [])) > 0,
+              str(found.get("total")))
+        empty = get("/api/search?q=")
+        check("пустой поиск пуст", empty.get("total") == 0)
+
         print("patterns")
         catalog = get("/api/patterns")
         check("catalog size", len(catalog["rules"]) == state["rules"])

@@ -13,11 +13,20 @@ const TITLES = {
   generator: ["Генератор", "проба и заготовка"],
   report: ["Отчёт", "markdown для команды"],
   traffic: ["Трафик", "доказательство: не флуд"],
+  map: ["Карта уязвимостей", "класс → файл → строка: что закрыто, что нет"],
+  journal: ["Журнал находок", "что было до патча и что стало после"],
   rules: ["Правила сканера", "что находит аудит и как это закрыть"],
   knowledge: ["База знаний", "регламент A/D, патчи, оценка, тренажёр"],
 };
 
-const ORDER = ["connect", "audit", "services", "findings", "files", "generator", "report", "traffic", "rules", "knowledge"];
+const ORDER = ["connect", "audit", "services", "findings", "files", "generator", "report", "traffic", "map", "journal", "rules", "knowledge"];
+
+// Цифры остались за прежними вкладками: 9 — правила, 0 — база знаний.
+// Карта и журнал получили буквы, чтобы не сдвигать привычную навигацию.
+const SHORTCUTS = {
+  "1": "connect", "2": "audit", "3": "services", "4": "findings", "5": "files",
+  "6": "generator", "7": "report", "8": "traffic", "9": "rules", "0": "knowledge",
+};
 
 const SEV_ORDER = { high: 0, medium: 1, low: 2, info: 3 };
 
@@ -54,7 +63,10 @@ const state = {
   demo: false,
   audit: null,
   findings: [],
-  filter: { q: "", sev: "", kind: "" },
+  filter: { q: "", sev: "", kind: "", conf: "", status: "" },
+  sort: "rank",
+  map: null,
+  journal: null,
   svcFilter: "",
   liveness: null,
   preflight: null,
@@ -217,6 +229,8 @@ function showTab(name, push) {
   $("#page-sub").textContent = sub;
   if (push !== false && location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
   if (name === "traffic") loadTraffic();
+  if (name === "map") loadMap();
+  if (name === "journal") loadJournal();
 }
 
 $$("#tabs button").forEach((button) => {
@@ -410,6 +424,7 @@ function ingest(audit) {
   renderSummary();
   renderServices();
   renderFindings();
+  renderConfidence();
   renderKindFilter();
   if (state.activeFinding) setGeneratorFinding(state.activeFinding);
   if ((audit.services || []).length && !state.liveness) {
@@ -584,6 +599,7 @@ function renderServices() {
     body.appendChild(row);
   });
   renderLivenessSummary();
+  makeSortable($("#services-table"));
 }
 
 $("#svc-search").addEventListener("input", (event) => {
@@ -803,14 +819,108 @@ function setSevChip(sev) {
 }
 
 function visibleFindings() {
-  const { q, sev, kind } = state.filter;
+  const { q, sev, kind, conf, status } = state.filter;
   const needle = q.trim().toLowerCase();
-  return state.findings.filter((item) => {
+  const items = state.findings.filter((item) => {
     if (sev && item.severity !== sev) return false;
     if (kind && item.kind !== kind) return false;
+    if (conf && ((item.confidence || {}).level || "unsure") !== conf) return false;
+    if (status && (item.status || "open") !== status) return false;
     if (!needle) return true;
-    return `${item.kind} ${item.kind_ru || ""} ${item.file} ${item.snippet} ${item.rule} ${item.language}`.toLowerCase().includes(needle);
+    return `${item.kind} ${item.kind_ru || ""} ${item.file} ${item.snippet} ${item.rule} ${item.language}`
+      .toLowerCase().includes(needle);
   });
+  return sortFindings(items);
+}
+
+function sortFindings(items) {
+  const score = (item) => ((item.confidence || {}).score ?? 50);
+  const sev = (item) => SEV_ORDER[item.severity] ?? 9;
+  const list = items.slice();
+  switch (state.sort) {
+    case "severity":
+      list.sort((a, b) => sev(a) - sev(b) || (a.file || "").localeCompare(b.file || ""));
+      break;
+    case "severity-asc":
+      list.sort((a, b) => sev(b) - sev(a) || (a.file || "").localeCompare(b.file || ""));
+      break;
+    case "confidence":
+      list.sort((a, b) => score(b) - score(a) || sev(a) - sev(b));
+      break;
+    case "confidence-desc":
+      list.sort((a, b) => score(a) - score(b) || sev(a) - sev(b));
+      break;
+    case "file":
+      list.sort((a, b) => (a.file || "").localeCompare(b.file || "") || (a.line || 0) - (b.line || 0));
+      break;
+    case "line":
+      list.sort((a, b) => (a.line || 0) - (b.line || 0));
+      break;
+    default:
+      list.sort((a, b) =>
+        (a.rank ?? sev(a) * 10) - (b.rank ?? sev(b) * 10) ||
+        (a.file || "").localeCompare(b.file || "") ||
+        (a.line || 0) - (b.line || 0));
+  }
+  return list;
+}
+
+function confPill(finding) {
+  const level = (finding.confidence || {}).level || "unsure";
+  const label = { certain: "уверен", likely: "скорее да", unsure: "не уверен" }[level] || level;
+  return el("span", "pill conf-" + level, label);
+}
+
+// Сводка по уверенности над списком: три счётчика и доля «не уверен».
+// Карточки кликабельны — фильтруют список тем же полем, что и чипы.
+function renderConfidence() {
+  const box = $("#conf-summary");
+  if (!box) return;
+  box.textContent = "";
+  const levels = [
+    ["certain", "уверен", "опасный вызов с видимым входом"],
+    ["likely", "скорее да", "решает контекст и права"],
+    ["unsure", "не уверен", "совпадение по форме"],
+  ];
+  levels.forEach(([level, label, hint]) => {
+    const count = state.findings.filter(
+      (item) => ((item.confidence || {}).level || "unsure") === level
+    ).length;
+    const card = el("div", "conf-card " + level);
+    if (state.filter.conf === level) card.classList.add("active");
+    card.appendChild(el("span", "n", String(count)));
+    const text = el("div");
+    text.appendChild(el("div", "l", label));
+    text.appendChild(el("div", "l", hint));
+    card.appendChild(text);
+    card.title = `показать только «${label}»`;
+    card.addEventListener("click", () => {
+      state.filter.conf = state.filter.conf === level ? "" : level;
+      $$("#conf-chips .conf-chip").forEach(
+        (chip) => chip.classList.toggle("active", (chip.dataset.conf || "") === state.filter.conf)
+      );
+      renderConfidence();
+      renderFindings();
+    });
+    box.appendChild(card);
+  });
+  const summary = (state.audit && state.audit.confidence) || {};
+  if (state.findings.length && typeof summary.share_unsure === "number") {
+    const note = el("div", "conf-card");
+    note.style.cursor = "default";
+    note.appendChild(el("span", "n", summary.share_unsure + "%"));
+    const text = el("div");
+    text.appendChild(el("div", "l", "доля «не уверен»"));
+    text.appendChild(el("div", "l", "их читают глазами"));
+    note.appendChild(text);
+    box.appendChild(note);
+  }
+}
+
+function statusPill(finding) {
+  const status = finding.status || "open";
+  const label = { open: "открыта", fixed: "закрыта", regressed: "вернулась", ignored: "игнор" }[status] || status;
+  return el("span", "pill st-" + status, label);
 }
 
 function renderFindings() {
@@ -827,11 +937,14 @@ function renderFindings() {
     item.dataset.id = finding.id;
     if (state.activeFinding && state.activeFinding.id === finding.id) item.classList.add("active");
     item.appendChild(el("span", "pill " + finding.severity, finding.severity));
+    item.appendChild(confPill(finding));
     const body = el("div", "body");
     body.appendChild(el("b", null, finding.kind_ru || finding.kind));
     const meta = `${finding.file}:${finding.line}` + (finding.effort_ru ? ` · ${finding.effort_ru}` : "") + (finding.template ? " · шаблон" : "");
     body.appendChild(el("small", null, meta));
     item.appendChild(body);
+    const status = finding.status || "open";
+    if (status !== "open") item.appendChild(statusPill(finding));
     item.addEventListener("click", () => selectFinding(finding));
     list.appendChild(item);
   });
@@ -930,6 +1043,39 @@ function renderFindingDetail(finding) {
 
   const body = el("div", "body");
 
+  const conf = finding.confidence || {};
+  const confBlock = el("div", "conf-block");
+  const confHead = el("div", "row tight");
+  confHead.appendChild(el("h3", null, "уверенность: " + (conf.level_ru || "не уверен")));
+  confHead.appendChild(confPill(finding));
+  confHead.appendChild(statusPill(finding));
+  confBlock.appendChild(confHead);
+  confBlock.appendChild(el("div", "why", conf.hint || ""));
+  if ((conf.plan || []).length) {
+    confBlock.appendChild(el("h3", null, "план проверки"));
+    const steps = el("ol");
+    conf.plan.forEach((step) => steps.appendChild(el("li", null, step)));
+    confBlock.appendChild(steps);
+  }
+  if ((conf.disproof || []).length) {
+    confBlock.appendChild(el("h3", null, "что закроет находку"));
+    const list = el("ul");
+    conf.disproof.forEach((item) => list.appendChild(el("li", null, item)));
+    confBlock.appendChild(list);
+  }
+  if ((conf.reasons || []).length) {
+    confBlock.appendChild(el("div", "why", "почему такая оценка: " + conf.reasons.join("; ")));
+  }
+  const statusRow = el("div", "row tight");
+  [["open", "вернуть в работу"], ["fixed", "закрыта"], ["ignored", "игнорировать"], ["regressed", "вернулась"]]
+    .forEach(([value, label]) => {
+      const button = el("button", "ghost small", label);
+      button.addEventListener("click", () => setFindingStatus(finding, value));
+      statusRow.appendChild(button);
+    });
+  confBlock.appendChild(statusRow);
+  body.appendChild(confBlock);
+
   const why = el("div", "block");
   why.appendChild(el("h4", null, "почему сработало"));
   why.appendChild(el("p", null, finding.why));
@@ -989,6 +1135,368 @@ $$("#sev-chips .sev-chip").forEach((chip) => {
     renderFindings();
   });
 });
+$$("#conf-chips .conf-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    state.filter.conf = chip.dataset.conf || "";
+    $$("#conf-chips .conf-chip").forEach((node) => node.classList.toggle("active", node === chip));
+    renderConfidence();
+    renderFindings();
+  });
+});
+$$("#status-chips .status-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    state.filter.status = chip.dataset.status || "";
+    $$("#status-chips .status-chip").forEach((node) => node.classList.toggle("active", node === chip));
+    renderFindings();
+  });
+});
+$("#f-sort").addEventListener("change", (event) => {
+  state.sort = event.target.value;
+  renderFindings();
+});
+
+async function setFindingStatus(finding, status) {
+  try {
+    await api("/api/status", {
+      method: "POST",
+      body: JSON.stringify({ fingerprint: finding.fingerprint, status }),
+    });
+    finding.status = status;
+    const stored = state.findings.find((item) => item.fingerprint === finding.fingerprint);
+    if (stored) stored.status = status;
+    renderFindings();
+    if (state.activeFinding) renderFindingDetail(state.activeFinding);
+    if (state.journal) loadJournal();
+    toast("статус: " + status, "ok");
+  } catch (error) {
+    toast(error.message, "bad");
+  }
+}
+
+/* ---------- карта ---------- */
+
+async function loadMap() {
+  const status = $("#map-status");
+  setStatus(status, "читаю карту…");
+  try {
+    state.map = await api("/api/map");
+    renderMap();
+    setStatus(status, "");
+  } catch (error) {
+    setStatus(status, error.message, "bad");
+  }
+}
+
+function mapFilters() {
+  return {
+    q: $("#map-search").value.trim().toLowerCase(),
+    openOnly: $("#map-open-only").checked,
+    certain: $("#map-certain").checked,
+    hideClosed: $("#map-unresolved").checked,
+  };
+}
+
+function renderMap() {
+  const holder = $("#map-body");
+  holder.textContent = "";
+  const map = state.map;
+  if (!map || !(map.nodes || []).length) {
+    holder.appendChild(el("div", "empty", (map && map.reason) || "сначала аудит"));
+    return;
+  }
+  const filters = mapFilters();
+  let shown = 0;
+  map.nodes.forEach((node) => {
+    const files = node.files
+      .map((file) => ({
+        ...file,
+        findings: file.findings.filter((finding) => {
+          if (filters.openOnly && finding.status !== "open" && finding.status !== "regressed") return false;
+          if (filters.certain && finding.confidence !== "certain") return false;
+          if (filters.hideClosed && (finding.status === "fixed" || finding.status === "ignored")) return false;
+          if (filters.q) {
+            const hay = `${node.kind_ru} ${file.file} ${finding.rule} ${finding.snippet}`.toLowerCase();
+            if (!hay.includes(filters.q)) return false;
+          }
+          return true;
+        }),
+      }))
+      .filter((file) => file.findings.length);
+    if (!files.length) return;
+    const total = files.reduce((sum, file) => sum + file.findings.length, 0);
+    shown += total;
+
+    const card = el("div", "map-node");
+    const head = el("div", "map-head");
+    head.appendChild(el("span", "dot " + node.severity));
+    head.appendChild(el("span", "title", node.kind_ru));
+    head.appendChild(el("span", "count", `${total}`));
+    const state1 = el("span", "count", "открыто: " + (node.status.open || 0));
+    head.appendChild(state1);
+    if (node.status.fixed) head.appendChild(el("span", "count", "закрыто: " + node.status.fixed));
+    card.appendChild(head);
+
+    const bodyBox = el("div", "map-files");
+    bodyBox.hidden = false;
+    files.forEach((file) => {
+      const fileRow = el("div", "map-file");
+      fileRow.appendChild(el("span", "dot " + file.severity));
+      fileRow.appendChild(el("span", "path", file.file));
+      fileRow.appendChild(el("span", "count", String(file.findings.length)));
+      bodyBox.appendChild(fileRow);
+      const rows = el("div");
+      rows.hidden = true;
+      file.findings.forEach((finding) => {
+        const row = el("div", "map-row");
+        row.appendChild(el("span", "line", ":" + (finding.line || 0)));
+        row.appendChild(el("span", "dot " + finding.severity));
+        row.appendChild(confPill(finding));
+        row.appendChild(el("span", "snip", finding.snippet || finding.rule));
+        if (finding.status !== "open") row.appendChild(statusPill(finding));
+        row.addEventListener("click", () => {
+          const full = state.findings.find((item) => item.id === finding.id);
+          if (full) {
+            selectFinding(full);
+            showTab("findings");
+          }
+        });
+        rows.appendChild(row);
+      });
+      bodyBox.appendChild(rows);
+      fileRow.addEventListener("click", () => {
+        rows.hidden = !rows.hidden;
+      });
+    });
+    card.appendChild(bodyBox);
+    head.addEventListener("click", () => {
+      bodyBox.hidden = !bodyBox.hidden;
+    });
+    holder.appendChild(card);
+  });
+  if (!shown) holder.appendChild(el("div", "empty", "под фильтры ничего не попалось"));
+}
+
+/* ---------- журнал ---------- */
+
+async function loadJournal() {
+  const status = $("#journal-status");
+  setStatus(status, "читаю журнал…");
+  try {
+    const data = await api("/api/journal");
+    state.journal = data;
+    renderJournal();
+    setStatus(status, "");
+  } catch (error) {
+    setStatus(status, error.message, "bad");
+  }
+}
+
+function renderJournal() {
+  const data = state.journal;
+  if (!data) return;
+  const summary = data.summary || {};
+  const stats = $("#journal-stats");
+  stats.textContent = "";
+  const block = (value, label) => {
+    const item = el("div", "journal-stat");
+    item.appendChild(el("div", "n", String(value)));
+    item.appendChild(el("div", "l", label));
+    return item;
+  };
+  stats.appendChild(block(summary.total || 0, "всего в базе"));
+  stats.appendChild(block(summary.open || 0, "открыто"));
+  stats.appendChild(block(summary.resolved || 0, "закрыто"));
+  stats.appendChild(block(summary.regressed || (summary.by_status || {}).regressed || 0, "вернулось"));
+  stats.appendChild(block(summary.ignored || 0, "игнор"));
+  stats.appendChild(block((summary.share_closed || 0) + "%", "доля закрытых"));
+
+  const runs = $("#journal-runs");
+  runs.textContent = "";
+  const runList = data.runs || [];
+  if (!runList.length) runs.appendChild(el("div", "empty", "журнал пуст: нужен хотя бы один аудит"));
+  runList.forEach((run) => {
+    const item = el("div", "item");
+    item.appendChild(el("span", "pill soft", new Date(run.at * 1000).toLocaleTimeString()));
+    const body = el("div", "body");
+    body.appendChild(el("b", null, `${run.total} находок · высоких ${run.high}`));
+    body.appendChild(el("small", null, `${run.target || "—"} · закрыто в прогоне: ${run.closed_in_run || 0}`));
+    item.appendChild(body);
+    runs.appendChild(item);
+  });
+
+  const before = $("#journal-before");
+  const after = $("#journal-after");
+  before.textContent = "";
+  after.textContent = "";
+  runList.forEach((run) => {
+    const label = `${new Date(run.at * 1000).toLocaleString()} · ${run.total}`;
+    before.appendChild(new Option(label, String(run.id)));
+    after.appendChild(new Option(label, String(run.id)));
+  });
+  if (runList.length >= 2) {
+    before.value = String(runList[1].id);
+    after.value = String(runList[0].id);
+  } else if (runList.length === 1) {
+    before.value = String(runList[0].id);
+    after.value = String(runList[0].id);
+  }
+
+  const table = $("#journal-table tbody");
+  table.textContent = "";
+  const findings = data.findings || [];
+  if (!findings.length) {
+    const row = el("tr");
+    const cell = el("td", "empty", "пока пусто");
+    cell.colSpan = 7;
+    row.appendChild(cell);
+    table.appendChild(row);
+  }
+  findings.forEach((finding) => {
+    const row = el("tr");
+    row.appendChild(el("td", "cell-mono", finding.rule));
+    row.appendChild(el("td", null, finding.kind));
+    row.appendChild(el("td", null, finding.severity));
+    row.appendChild(el("td", null, finding.confidence || "—"));
+    row.appendChild(el("td", "cell-mono", `${finding.file}:${finding.line}`));
+    const statusCell = el("td");
+    statusCell.appendChild(el("span", "pill st-" + finding.status,
+      { open: "открыта", fixed: "закрыта", regressed: "вернулась", ignored: "игнор" }[finding.status] || finding.status));
+    row.appendChild(statusCell);
+    const actions = el("td");
+    const box = el("div", "journal-actions");
+    [["open", "вернуть"], ["fixed", "закрыть"], ["ignored", "игнор"]].forEach(([value, label]) => {
+      const button = el("button", "ghost small", label);
+      button.addEventListener("click", async () => {
+        try {
+          await api("/api/status", { method: "POST", body: JSON.stringify({ fingerprint: finding.fingerprint, status: value }) });
+          const original = state.findings.find((item) => item.fingerprint === finding.fingerprint);
+          if (original) original.status = value;
+          await loadJournal();
+          toast("статус: " + value, "ok");
+        } catch (error) {
+          toast(error.message, "bad");
+        }
+      });
+      box.appendChild(button);
+    });
+    actions.appendChild(box);
+    row.appendChild(actions);
+    table.appendChild(row);
+  });
+  makeSortable($("#journal-table"));
+}
+
+async function loadJournalDiff() {
+  const status = $("#journal-status");
+  setStatus(status, "сравниваю…");
+  try {
+    const before = $("#journal-before").value;
+    const after = $("#journal-after").value;
+    const result = await api(`/api/journal/diff?before=${before}&after=${after}`);
+    renderJournalDiff(result);
+    setStatus(status, "");
+  } catch (error) {
+    setStatus(status, error.message, "bad");
+  }
+}
+
+function renderJournalDiff(result) {
+  const holder = $("#journal-diff");
+  holder.textContent = "";
+  if (!result || result.available === false) {
+    holder.appendChild(el("div", "empty", (result && result.reason) || "разницы нет"));
+    return;
+  }
+  const head = el("div", "head");
+  head.appendChild(el("h3", null, "Разница между прогонами"));
+  head.appendChild(el("div", "loc", `было ${result.before.total} → стало ${result.after.total} · осталось ${result.persisting}`));
+  holder.appendChild(head);
+  const wrap = el("div", "body");
+  const section = (title, items, cls) => {
+    const block = el("div", "block");
+    block.appendChild(el("h4", null, `${title}: ${items.length}`));
+    if (!items.length) {
+      block.appendChild(el("div", "empty", "—"));
+    } else {
+      items.forEach((item) => {
+        const row = el("div", "map-row");
+        row.appendChild(el("span", "dot " + (item.severity || "info")));
+        row.appendChild(el("span", "snip", `${item.rule} · ${item.file}:${item.line}`));
+        if (item.status) {
+          row.appendChild(el("span", "pill st-" + item.status,
+            { open: "открыта", fixed: "закрыта", regressed: "вернулась", ignored: "игнор" }[item.status] || item.status));
+        }
+        block.appendChild(row);
+      });
+    }
+    block.className = "block " + cls;
+    wrap.appendChild(block);
+  };
+  section("пропало (закрыто)", result.closed || [], "closed");
+  section("появилось", result.appeared || [], "appeared");
+  holder.appendChild(wrap);
+}
+
+/* ---------- сортировка таблиц ---------- */
+
+// Слова важности и состояния сортируются своим порядком, а не алфавитом.
+const TEXT_RANK = {
+  high: 0, medium: 1, low: 2, info: 3,
+  "уверен": 0, "скорее да": 1, "не уверен": 2,
+  "открыта": 0, "закрыта": 1, "вернулась": 2, "игнор": 3,
+  "не лежит": 0, "лежит": 1, "ошибки": 2,
+};
+
+function cellValue(row, index) {
+  const cell = row && row.cells[index];
+  if (!cell) return "";
+  const text = cell.textContent.trim();
+  const rank = TEXT_RANK[text.toLowerCase()];
+  if (rank !== undefined) return rank;
+  const number = parseFloat(text.replace(",", "."));
+  if (Number.isFinite(number) && /^[-+0-9.,\s]+$/.test(text)) return number;
+  return text.toLowerCase();
+}
+
+function makeSortable(table) {
+  if (!table || table.dataset.sortable === "1") return;
+  table.dataset.sortable = "1";
+  table.classList.add("sortable");
+  const head = table.tHead;
+  if (!head || !head.rows.length) return;
+  Array.from(head.rows[0].cells).forEach((cell, index) => {
+    const arrow = el("span", "arrow", "↕");
+    cell.appendChild(arrow);
+    let ascending = true;
+    cell.addEventListener("click", () => {
+      const body = table.tBodies[0];
+      if (!body) return;
+      // Раскрытый код правила — отдельная строка под своей: сортировать её
+      // отдельно значит оторвать код от правила. Тащим парой.
+      const groups = [];
+      Array.from(body.rows).forEach((row) => {
+        if (row.classList.contains("rule-code-row") && groups.length) {
+          groups[groups.length - 1].push(row);
+        } else {
+          groups.push([row]);
+        }
+      });
+      const valued = groups.map((group) => ({ group, value: cellValue(group[0], index) }));
+      valued.sort((a, b) => {
+        if (a.value === b.value) return 0;
+        const result = a.value > b.value ? 1 : -1;
+        return ascending ? result : -result;
+      });
+      arrow.textContent = ascending ? "↑" : "↓";
+      ascending = !ascending;
+      valued.forEach((item) => item.group.forEach((row) => body.appendChild(row)));
+    });
+  });
+}
+
+function makeAllSortable() {
+  $$("table").forEach((table) => makeSortable(table));
+}
 
 /* ---------- файлы ---------- */
 
@@ -1412,6 +1920,7 @@ function renderTraffic(profile) {
     row.appendChild(el("td", "cell-mono", event.ms ?? 0));
     body.appendChild(row);
   });
+  makeSortable($("#traffic-table"));
 }
 
 async function loadTraffic() {
@@ -1487,6 +1996,7 @@ function renderRules() {
     row.appendChild(cell);
     body.appendChild(row);
   }
+  makeSortable($("#rules-table"));
 }
 
 async function toggleRuleCode(row, rule, button) {
@@ -1610,13 +2120,15 @@ document.addEventListener("keydown", (event) => {
     else { showTab("findings"); $("#f-search").focus(); }
     return;
   }
-  if (/^[1-9]$/.test(event.key)) {
-    const name = ORDER[Number(event.key) - 1];
+  if (/^[0-9]$/.test(event.key)) {
+    const name = SHORTCUTS[event.key];
     if (name) showTab(name);
     return;
   }
   if (event.key.toLowerCase() === "g") { $("#btn-generate").click(); }
   if (event.key.toLowerCase() === "r") { $("#btn-run-probe").click(); }
+  if (event.key.toLowerCase() === "m") { showTab("map"); }
+  if (event.key.toLowerCase() === "j") { showTab("journal"); }
 });
 
 /* ---------- остановка ---------- */
@@ -1765,6 +2277,88 @@ async function loadDrills() {
 
 $("#btn-drill-refresh").addEventListener("click", loadDrills);
 
+/* ---------- глобальный поиск ---------- */
+
+let searchTimer = null;
+
+async function runGlobalSearch(raw) {
+  const box = $("#search-results");
+  const query = (raw || "").trim();
+  if (query.length < 2) {
+    box.hidden = true;
+    box.textContent = "";
+    return;
+  }
+  try {
+    const result = await api("/api/search?q=" + encodeURIComponent(query));
+    box.textContent = "";
+    if (!result.total) {
+      box.appendChild(el("div", "empty", "ничего не нашлось"));
+      box.hidden = false;
+      return;
+    }
+    const group = (title, items, render) => {
+      if (!items.length) return;
+      box.appendChild(el("div", "search-group", title + " · " + items.length));
+      items.forEach(render);
+    };
+    group("находки", result.findings || [], (item) => {
+      const hit = el("div", "search-hit");
+      hit.appendChild(el("span", "dot " + (item.severity || "info")));
+      hit.appendChild(el("span", "t", `${item.kind_ru || item.rule} · ${item.file}:${item.line}`));
+      if (item.confidence) {
+        hit.appendChild(el("span", "pill conf-" + item.confidence,
+          { certain: "уверен", likely: "скорее да", unsure: "не уверен" }[item.confidence] || item.confidence));
+      }
+      hit.addEventListener("click", () => {
+        const full = state.findings.find((entry) => entry.id === item.id);
+        box.hidden = true;
+        if (full) {
+          selectFinding(full);
+          showTab("findings");
+        }
+      });
+      box.appendChild(hit);
+    });
+    group("правила", result.rules || [], (item) => {
+      const hit = el("div", "search-hit");
+      hit.appendChild(el("span", "t", `${item.id} · ${item.kind_ru || item.kind}`));
+      hit.appendChild(el("span", "m", item.severity));
+      hit.addEventListener("click", () => {
+        box.hidden = true;
+        showTab("rules");
+        $("#rules-search").value = item.id;
+        state.rulesFilter = item.id;
+        renderRules();
+      });
+      box.appendChild(hit);
+    });
+    group("база знаний", result.knowledge || [], (item) => {
+      const hit = el("div", "search-hit");
+      hit.appendChild(el("span", "t", `${item.name}:${item.line} — ${item.preview}`));
+      hit.addEventListener("click", () => {
+        box.hidden = true;
+        showTab("knowledge");
+      });
+      box.appendChild(hit);
+    });
+    box.hidden = false;
+  } catch (error) {
+    box.textContent = error.message;
+    box.hidden = false;
+  }
+}
+
+$("#global-search").addEventListener("input", (event) => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => runGlobalSearch(event.target.value), 180);
+});
+document.addEventListener("click", (event) => {
+  const box = $("#search-results");
+  if (!box || box.hidden) return;
+  if (!event.target.closest(".global-search")) box.hidden = true;
+});
+
 /* ---------- старт ---------- */
 
 async function boot() {
@@ -1790,7 +2384,16 @@ async function boot() {
 
   loadRules();
   loadKnowledge();
-loadDrills();
+  loadDrills();
+  makeAllSortable();
+
+  $("#map-search").addEventListener("input", renderMap);
+  $("#map-open-only").addEventListener("change", renderMap);
+  $("#map-certain").addEventListener("change", renderMap);
+  $("#map-unresolved").addEventListener("change", renderMap);
+  $("#btn-journal-refresh").addEventListener("click", loadJournal);
+  $("#btn-journal-diff").addEventListener("click", loadJournalDiff);
+  $("#f-sort").value = state.sort;
 }
 
 boot();

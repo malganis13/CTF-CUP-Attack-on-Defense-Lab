@@ -13,7 +13,7 @@ import time
 import zipfile
 from pathlib import Path
 
-from . import binaries, cve, deps, elf, patterns, priority, ru
+from . import binaries, confidence, cve, deps, elf, patterns, priority, ru
 from .binaries import ELF_COMMAND, FETCH_COMMAND, STRINGS_COMMAND
 from .languages import detect_stacks, stack_for
 from .ssh import BaseSSH
@@ -416,7 +416,9 @@ def analyze_sources(sources: dict[str, str], services: list[dict], host: str,
         if not item.get("patch_ru"):
             item["patch_ru"] = ru.patch_ru(item.get("rule", ""), item.get("patch", ""))
         priority.enrich(item)
+        item["confidence"] = confidence.assess(item)
     findings.sort(key=priority.sort_key)
+    confidence_summary = confidence.assess_many(findings)
 
     counts = {severity: sum(1 for item in findings if item["severity"] == severity)
               for severity in ("high", "medium", "low", "info")}
@@ -430,6 +432,7 @@ def analyze_sources(sources: dict[str, str], services: list[dict], host: str,
         "endpoints": endpoints,
         "findings": findings,
         "counts": counts,
+        "confidence": confidence_summary,
         "languages": [
             {"language": name, "files": count}
             for name, count in sorted(language_counts.items(), key=lambda pair: (-pair[1], pair[0]))

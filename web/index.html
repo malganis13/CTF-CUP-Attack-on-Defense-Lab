@@ -51,7 +51,15 @@
       </button>
 
       <div class="nav-group">Справка</div>
-      <button data-tab="rules" title="Правила сканера (8)">
+      <button data-tab="map" title="Карта уязвимостей (8)">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v4M12 11v3M6 21v-4M18 21v-4M6 17h12"/><circle cx="12" cy="9" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="19" r="2"/></svg>
+        <span class="label">Карта</span>
+      </button>
+      <button data-tab="journal" title="Журнал находок (9)">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h11l3 3v13H5z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>
+        <span class="label">Журнал</span>
+      </button>
+      <button data-tab="rules" title="Правила сканера (10)">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16M4 12h16M4 19h10"/></svg>
         <span class="label">Правила сканера</span>
       </button>
@@ -72,7 +80,7 @@
         <button id="btn-round" class="ghost small">старт раунда</button>
       </div>
       <div class="side-hint">
-        <kbd>/</kbd> поиск · <kbd>1–9</kbd> разделы<br>
+        <kbd>/</kbd> поиск · <kbd>1–9</kbd> разделы · <kbd>M</kbd> карта · <kbd>J</kbd> журнал<br>
         <kbd>G</kbd> проба · <kbd>Esc</kbd> закрыть
       </div>
       <button id="btn-stop" class="ghost small" title="Остановить локальный сервер приложения">Остановить сервер</button>
@@ -86,6 +94,10 @@
         <span class="sub" id="page-sub">укажите хост и пользователя</span>
       </div>
       <div class="spacer"></div>
+      <div class="global-search">
+        <input id="global-search" placeholder="поиск: находки, правила, база…" autocomplete="off">
+        <div id="search-results" class="search-results" hidden></div>
+      </div>
       <span class="chip off" id="chip-target"><span class="dot"></span><span id="chip-target-text">не подключено</span></span>
       <span class="chip demo" id="chip-demo" hidden><span class="dot"></span>демо</span>
       <span class="chip" id="chip-audit"><span class="dot"></span><span id="chip-audit-text">аудита нет</span></span>
@@ -277,6 +289,7 @@
           </div>
           <div id="compare-body" class="compare"></div>
         </div>
+        <div class="conf-summary" id="conf-summary"></div>
         <div class="filters">
           <input id="f-search" placeholder="Поиск: файл, правило, текст…  ( / )">
           <div class="sev-chips" id="sev-chips">
@@ -287,7 +300,31 @@
             <button class="sev-chip" data-sev="info">info</button>
           </div>
           <select id="f-kind"><option value="">все классы</option></select>
+          <select id="f-sort">
+            <option value="rank">по приоритету</option>
+            <option value="severity">важность ↓</option>
+            <option value="severity-asc">важность ↑</option>
+            <option value="confidence">уверенность ↑</option>
+            <option value="confidence-desc">уверенность ↓</option>
+            <option value="file">файл</option>
+            <option value="line">строка</option>
+          </select>
           <span class="status" id="f-count"></span>
+        </div>
+        <div class="filters" style="margin-top:-6px">
+          <div class="sev-chips" id="conf-chips">
+            <button class="conf-chip active" data-conf="">любая уверенность</button>
+            <button class="conf-chip certain" data-conf="certain">уверен</button>
+            <button class="conf-chip likely" data-conf="likely">скорее да</button>
+            <button class="conf-chip unsure" data-conf="unsure">не уверен</button>
+          </div>
+          <div class="sev-chips" id="status-chips">
+            <button class="status-chip active" data-status="">любой статус</button>
+            <button class="status-chip open" data-status="open">открыта</button>
+            <button class="status-chip fixed" data-status="fixed">закрыта</button>
+            <button class="status-chip regressed" data-status="regressed">вернулась</button>
+            <button class="status-chip ignored" data-status="ignored">игнор</button>
+          </div>
         </div>
         <div class="split">
           <div class="list" id="findings-list"></div>
@@ -448,6 +485,70 @@
           <div class="table-wrap"><table id="traffic-table">
             <thead><tr><th>время</th><th>запрос</th><th>код</th><th>байт</th><th>мс</th></tr></thead>
             <tbody><tr><td colspan="5" class="empty">проб ещё не было</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <!-- КАРТА -->
+      <section class="panel" id="panel-map">
+        <div class="card" style="margin-bottom:14px">
+          <div class="row">
+            <div class="grow">
+              <h2 style="margin:0">Карта уязвимостей</h2>
+              <p class="lead" style="margin:2px 0 0">
+                Иерархия: класс → файл → строка. Цвет — важность, плашка — уверенность
+                и статус. Клик по строке открывает находку с планом проверки и правкой.
+              </p>
+            </div>
+            <input id="map-search" placeholder="поиск: класс, файл, правило…" style="max-width:280px">
+          </div>
+          <div class="row" style="margin-top:10px;gap:14px;flex-wrap:wrap">
+            <div class="map-legend">
+              <span class="dot high"></span>high
+              <span class="dot medium"></span>medium
+              <span class="dot low"></span>low
+              <span class="dot info"></span>info
+            </div>
+            <label class="check"><input id="map-open-only" type="checkbox"><span>только открытые</span></label>
+            <label class="check"><input id="map-certain" type="checkbox"><span>только «уверен»</span></label>
+            <label class="check"><input id="map-unresolved" type="checkbox"><span>скрыть закрытые</span></label>
+            <span class="status" id="map-status"></span>
+          </div>
+        </div>
+        <div id="map-body" class="map"><div class="empty">сначала аудит</div></div>
+      </section>
+
+      <!-- ЖУРНАЛ -->
+      <section class="panel" id="panel-journal">
+        <div class="card" style="margin-bottom:14px">
+          <div class="row">
+            <div class="grow">
+              <h2 style="margin:0">Журнал находок</h2>
+              <p class="lead" style="margin:2px 0 0">
+                База прогонов: что было до патча, что после. Находка узнаётся по
+                правилу, файлу и тексту строки, поэтому сдвиг строк патчем её не теряет.
+              </p>
+            </div>
+            <button id="btn-journal-refresh" class="ghost small">обновить</button>
+          </div>
+          <div class="journal-stats" id="journal-stats"></div>
+          <div class="row" style="margin-top:12px;gap:10px;flex-wrap:wrap">
+            <select id="journal-before" style="max-width:220px"></select>
+            <span>→</span>
+            <select id="journal-after" style="max-width:220px"></select>
+            <button id="btn-journal-diff" class="ghost small">сравнить</button>
+            <span class="status" id="journal-status"></span>
+          </div>
+        </div>
+        <div class="split">
+          <div class="list" id="journal-runs"></div>
+          <div class="detail" id="journal-diff"><div class="empty">выберите два прогона и нажмите «сравнить»</div></div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <h2 style="margin-top:0">Все находки в базе</h2>
+          <div class="table-wrap"><table id="journal-table">
+            <thead><tr><th>правило</th><th>класс</th><th>важность</th><th>уверенность</th><th>файл</th><th>состояние</th><th></th></tr></thead>
+            <tbody><tr><td colspan="7" class="empty">загрузка</td></tr></tbody>
           </table></div>
         </div>
       </section>
