@@ -290,6 +290,7 @@ python tools/test_deps_cve.py    # 21: манифесты -> версии, вс�
 python tools/test_offline_patch.py  # 12: zip без SSH, защита от выхода за
                                  # каталог, git apply --check на реальном файле
 python tools/smoke.py            # 100 проверок: все ручки API и панели
+python tools/test_cup_years.py   # 10 корпусов: заложенное найдено, no regress
 ```
 
 `test_probe.py` поднимает `tools/lab_server.py` — намеренно уязвимый сервер на
@@ -633,36 +634,48 @@ LFI PHP (1). Чекер: три сервиса зелёные.
 
 ## Проверка на прошлых Кубках
 
-Сканер прогнан по публичным репозиториям `ctfcup/2019-attack-defense` и
-`ctfcup/2018-attack-defense`. Замысел авторов известен по каталогу `exploits/`,
-поэтому проверка — не «нашлось что-то», а покрытие заложенного.
+Сканер прогнан по публичным репозиториям Кубка: 2019, 2020 (отбор и финал),
+2021 (battle), 2024 (school и LetoCTF), 2025 и два корпуса сезона 2026. Замысел
+авторов известен по каталогу `sploits/`, поэтому проверка — не «нашлось что-то»,
+а покрытие заложенного.
 
 ```bash
-python tools/check_cup.py D:/cup2019/2019-attack-defense
-python tools/check_cup.py D:/cup2019/2018-attack-defense
+python tools/check_cup.py D:/aciso/ctfcup-2020-ad-finals   # сверка с замыслом
+python tools/cup_report.py D:/aciso/<корпус> …              # сводка по нескольким
+python tools/test_cup_years.py                              # регрессия по всем
 ```
 
 | Кубок | Сервис | Стек | Заложено авторами | Найдено |
 |---|---|---|---|---|
-| 2019 | medlink | C# / ASP.NET Core | Path traversal, предсказуемый токен сессии | 3 находки, оба класса |
-| 2019 | planner | Node.js | SQLi в самописной ORM | 8 находок, SQLi |
-| 2019 | qdb | Python, свой протокол | слабая крипта: ключ, IV, XOR | 5 находок, все три класса |
-| 2018 | black_exchange | PHP / Laravel | IDOR по чужому счёту, SSRF | 2 находки, IDOR |
-| 2018 | arlington | Python / Django | LaTeX RCE, SSRF, path traversal | 4 находки, path |
-| 2018 | vaultpass | C++ | токен по умолчанию, off-by-one, нулевой байт | 5 находок (пути, строки C) |
-| 2026 | greenhouse | Python + свой движок | use-after-free, обрезка URL по `#`, гонка | 5 (IDOR по `WHERE id=?`) |
-| 2026 | orbital_navigation | Rust | source_id, TOCTOU в export, геометрия | 4 (пути) |
-| 2026 | lighthouse | C++ | chosen-plaintext по FEAL | 14 (строки C, SQL по id) |
-| 2026 | starpost | Flask + Postgres | promo без идемпотентности, обход HMAC в курсоре, prefix-match LFI | 11 (logic, path, ssrf, mass-assign) |
-| 2026 | letoctf: smc / tuzemun / skychat | Python / JS / C++ | — | 7 / 4 / 5 |
-| 2025 | archive | C++ | CVE-2023-34399, boost-архив | 1 (десериализация boost) |
-| 2025 | veladora | Go / Gin | IDOR по счёту, владелец из `req.Username` | 30 (owner-from-request, IDOR) |
-| 2025 | prototype | Python / MinIO | CVE-2025-62506, токен с ключами в base64 | 3 (секрет, SQL) |
-| 2025 | warehouse | Go + React, TLS | SSRF через gateway, IDOR | 15 (IDOR, SQL, SSRF) |
-| 2019 | chocowrappers | C# / ASP.NET | mass assignment владельца, пароли открытым текстом, `.db` в статике | 3 (mass assignment, секрет) |
-| 2019 | icecreams | Pascal | статический секрет сессии, `md5(user + secret)` | 2 (секрет, слабый токен) |
-| 2019 | rushmallow | F# | сервер говорит, угадал ли `filling` — оракул сравнения | 1 (оракул сравнения) |
-| 2019 | kozipipe | Python | SSRF, гонка, права на файл | 3 (path, SSRF) |
+| 2019 | medlink | C# / ASP.NET Core | `Path.Combine` из запроса, предсказуемый токен | 3 (пути, токен, debug) |
+| 2019 | planner | Node.js | SQLi в самописной ORM | 8, SQLi |
+| 2019 | qdb | Python | слабая крипта: ключ, IV, XOR | 5, все три класса |
+| 2019 | chocowrappers | C# | mass assignment владельца, пароли открытым текстом, `.db` в статике | 5 (mass assignment, секрет, debug) |
+| 2019 | icecreams | Pascal | статический секрет, `md5(user + secret)` | 2 (секрет, слабый токен) |
+| 2019 | rushmallow | F# | оракул сравнения `filling` | 1 (оракул сравнения) |
+| 2019 | kozipipe | Python | SSRF, гонка | 3 (path, SSRF) |
+| 2020 | ChessBase | Python / Sanic | сборка чужого объекта, `pickle` в хранилище | 1 (десериализация) |
+| 2020 | QExecute | C# + nginx | свой бинарный протокол, `cookie → upstream` | 3 (SSRF по куке, unsafe pointer) |
+| 2020 | cubic | Python | авторизация по умножению кубика | 0 — руками |
+| 2020 финал | barker | Python / Django | IDOR `/get_bark/<id>`, дружба `default=True`, приватные комментарии, токен | 8 (owner, auto-approve, токен, debug) |
+| 2020 финал | VaporService | C# | TTL-очистка не срабатывает, `UseDeveloperExceptionPage` | 2 (dead branch, debug) |
+| 2021 battle | web | Python / FastAPI | `JWT_SECRET_KEY` в настройках, `DEBUG=True` | 2 (секрет, debug) |
+| 2021 battle | data-saver | C++ | pwn по бинарнику, привилегированный контейнер | 1 (infra) |
+| 2024 school | filtranator | Python + C | SQLi в логине, переполнение в `filterer` | 4 (SQL injection ×3, секрет) |
+| 2024 school | flysim | Python | NoSQL `$match`, CRC32-токен, `globals().get` | 3 (NoSQL, dynamic call, infra) |
+| 2024 LetoCTF | crud | C++ | отрицательный индекс, сравнение по длине, ROP | 5 (bounds, prefix compare, cmd) |
+| 2025 | archive | C++ | CVE-2023-34399, boost-архив | 2 (десериализация, тег) |
+| 2025 | veladora | Go / Gin | IDOR по счёту, владелец из `req.Username` | 31 (owner-from-request, IDOR, XSS) |
+| 2025 | prototype | Python / MinIO | SQL-склейка, privileged, hostPath | 11 (SQL, infra) |
+| 2025 | warehouse | Go + React, TLS | SSRF через gateway, IDOR | 19 (IDOR, SQL, SSRF, секрет) |
+| 2026 | greenhouse | Go | IDOR по номеру | 6 (IDOR) |
+| 2026 | orbital_navigation | Rust | путь из запроса | 1 (путь) |
+| 2026 | lighthouse | C++ | командная инъекция, `strcpy` | 14 (cmd, IDOR, строки C) |
+| 2026 | starpost | Flask + Postgres | promo без идемпотентности, обход HMAC, prefix-match LFI | 10 (logic, path, ssrf, mass-assign, SQL) |
+| 2026 | letoctf: smc / tuzemun / skychat | Python / JS / C++ | SQL, debug, XSS, IDOR, `system()` | 7 / 4 / 4 |
+
+Полный разбор по годам со ссылкой на заложенные дыры — `knowledge/cup-years.md`,
+открывается во вкладке «База знаний».
 
 Что это дало по коду:
 
@@ -678,7 +691,15 @@ python tools/check_cup.py D:/cup2019/2018-attack-defense
 - Новые правила: `py-key-truncation`, `py-static-iv`, `py-xor-reuse`,
   `js-weak-sanitizer`, `cs-weak-token` (контекстное), `php-laravel-idor`,
   `php-laravel-ssrf`, `crypto-custom-cipher`, `logic-balance-update`,
-  `logic-missing-owner-check`. Всего 65.
+  `logic-missing-owner-check`.
+- Правила 1.7–1.8, закрывшие 2020–2024: `cs-unsafe-deserialization`,
+  `cs-debug-page`, `cs-unsafe-pointer`, `cs-dead-ttl` (TTL, который никогда не
+  срабатывает), `nginx-cookie-upstream` (кука → upstream), `mongo-nosql-request`,
+  `py-dynamic-dispatch` (`globals().get` из запроса), `py-eval`,
+  `py-jwt-noverify`, `py-sql-concat` (многострочная склейка),
+  `py-owner-from-request`, `dj-auto-approved` (дружба `default=True`),
+  `c-prefix-compare`, `c-index-from-input`, `cpp-unsigned-index`,
+  `rust-path-join`, `static-sensitive-file`. Всего 94 правила.
 - Сборки и вендоренный код не сканируются: `*.min.js`, `chunk-*`, каталоги
   `vendor/`, `node_modules/`, заголовки длиннее 800 строк — они давали ложные
   находки в `three.core.min.js` и `crow/json.h`.
@@ -701,8 +722,9 @@ python tools/check_cup.py D:/cup2019/2018-attack-defense
   boost-архива срабатывает на строке include.
 
 Чего на этих Кубках не хватило: логика без регулярки (права на объект внутри
-ORM), бинарники без исходников, не-HTTP протоколы (qdb виден как «порт открыт»),
-и `app.UseExceptionHandler`-класс ошибок. Это следующие паки, а не дыры текущих.
+ORM, сборка чужого объекта в ChessBase, обход проверки при малом `limit`),
+бинарники без исходников, не-HTTP протоколы (qdb виден как «порт открыт»), и
+`app.UseExceptionHandler`-класс ошибок. Это следующие паки, а не дыры текущих.
 
 ## Лицензия
 

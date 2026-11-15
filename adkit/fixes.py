@@ -695,12 +695,175 @@ def _debug_route() -> Fix:
     )
 
 
+def _nosql() -> Fix:
+    return Fix(
+        key="nosql",
+        title="Скалярный вход и фильтр, собранный на сервере",
+        before=("db.drones.aggregate([{'$match': json.loads(request.args['what'])}])",),
+        after={
+            "python": (
+                "what = request.args.get('what', '')",
+                "if not what or len(what) > 64:",
+                "    return jsonify(error='bad filter'), 400",
+                "# поле фиксировано, значение — строка, операторы недоступны",
+                'rows = list(db.drones.find({"label": {"$eq": what}}))',
+            ),
+            "javascript": (
+                "const label = String(req.query.what || '');",
+                "if (!label || label.length > 64) return send(res, 400, 'bad filter');",
+                "const rows = await db.collection('drones').find({ label: { $eq: label } }).toArray();",
+            ),
+            "go": (
+                'label := r.URL.Query().Get("what")',
+                "if label == \"\" || len(label) > 64 {",
+                '    http.Error(w, "bad filter", 400)',
+                "    return",
+                "}",
+                'rows, err := coll.Find(ctx, bson.M{"label": label})',
+            ),
+        },
+        steps=(
+            "замени приём объекта от клиента на приём одной строки",
+            "собери фильтр на сервере: имя поля — константа, значение — скаляр",
+            "отвергай ключи, начинающиеся с `$`, если объект всё же приходит",
+            "прогони прежнюю пробу: `$regex` не должен менять набор записей",
+        ),
+        breaks="если чекер присылает сложный фильтр, он получит 400; сверься с чекером",
+    )
+
+
+def _dispatch() -> Fix:
+    return Fix(
+        key="dispatch",
+        title="Таблица команд вместо поиска по globals",
+        before=("func = globals().get(command_name); func(drone)",),
+        after={
+            "python": (
+                "COMMANDS = {",
+                '    "BOOSTX": lambda drone, arg: drone.boost("x", int(arg)),',
+                '    "BOOSTY": lambda drone, arg: drone.boost("y", int(arg)),',
+                '    "FIRE": lambda drone, arg: drone.fire(),',
+                "}",
+                "handler = COMMANDS.get(command_name)",
+                "if handler is None:",
+                '    raise ValueError(f"unknown command {command_name!r}")',
+                "handler(drone, arg)",
+            ),
+        },
+        steps=(
+            "выпиши список команд, которые сервис действительно исполняет",
+            "замени globals()/getattr на словарь из этого списка",
+            "неизвестное имя — ошибка, а не пропуск",
+            "проверь, что каждая команда из плана полёта по-прежнему работает",
+        ),
+        breaks="новая команда без записи в таблицу перестанет исполняться — это и есть цель",
+    )
+
+
+def _prefix() -> Fix:
+    return Fix(
+        key="prefix",
+        title="Полная длина и сравнение за постоянное время",
+        before=("if (strncmp(token, secret, strlen(token)) == 0) { auth_ok(); }",),
+        after={
+            "c": (
+                "if (strlen(token) != strlen(secret)) {",
+                "    return 0;",
+                "}",
+                "unsigned char diff = 0;",
+                "for (size_t i = 0; i < strlen(secret); i++) {",
+                "    diff |= (unsigned char)(token[i] ^ secret[i]);",
+                "}",
+                "return diff == 0;",
+            ),
+            "cpp": (
+                "if (token.size() != secret.size()) return false;",
+                "unsigned char diff = 0;",
+                "for (std::size_t i = 0; i < secret.size(); ++i) {",
+                "    diff |= static_cast<unsigned char>(token[i] ^ secret[i]);",
+                "}",
+                "return diff == 0;",
+            ),
+        },
+        steps=(
+            "сначала сравни длину: разная — сразу отказ",
+            "затем пройди всю строку целиком, без выхода на первом несовпадении",
+            "не логируй длину совпавшего префикса",
+            "проверь пустой токен: он должен отвергаться",
+        ),
+        breaks="пустой токен перестанет приниматься — это и есть дыра",
+    )
+
+
+def _bounds() -> Fix:
+    return Fix(
+        key="bounds",
+        title="Проверка индекса до обращения",
+        before=("item = items[atoi(param)];",),
+        after={
+            "c": (
+                "long index = strtol(param, NULL, 10);",
+                "if (index < 0 || (size_t)index >= items_len) {",
+                '    send_error(conn, 400, "bad index");',
+                "    return;",
+                "}",
+                "item = items[index];",
+            ),
+            "cpp": (
+                "const int index = std::stoi(param);",
+                "if (index < 0 || static_cast<std::size_t>(index) >= items.size()) {",
+                '    return send_error(conn, 400, "bad index");',
+                "}",
+                "const auto& item = items[index];",
+            ),
+        },
+        steps=(
+            "разбери индекс в знаковое число и проверь границы до доступа",
+            "отрицательное значение — отказ, а не обратный индекс",
+            "используй знаковый тип: беззнаковый спрячет отрицательное в огромное",
+            "проверь пустой список: индекс 0 тоже должен отвергаться",
+        ),
+        breaks="обратный доступ по -1, если он использовался для «последнего элемента», сломается",
+    )
+
+
+def _approve() -> Fix:
+    return Fix(
+        key="approve",
+        title="Подтверждение связи отдельным действием",
+        before=('status = models.BooleanField(default=True)',),
+        after={
+            "python": (
+                "class Friendship(models.Model):",
+                "    requester = models.ForeignKey(User, related_name='sent', on_delete=models.CASCADE)",
+                "    target = models.ForeignKey(User, related_name='received', on_delete=models.CASCADE)",
+                "    status = models.BooleanField(default=False)",
+                "    created_at = models.DateTimeField(auto_now_add=True)",
+                "",
+                "# принятие — отдельный маршрут, вызывает только вторая сторона",
+                "def accept(request, friendship_id):",
+                "    link = get_object_or_404(Friendship, pk=friendship_id, target=request.user)",
+                "    link.status = True",
+                "    link.save(update_fields=['status'])",
+            ),
+        },
+        steps=(
+            "поставь default=False в модели",
+            "создание связи оставь без подтверждения, принятие — отдельным маршрутом",
+            "принятие разрешай только второй стороне: фильтр по target=request.user",
+            "проверь, что приватный объект без принятой связи отдаёт 404",
+        ),
+        breaks="уже существующие связи в базе останутся True; проверь, что это те, что были приняты",
+    )
+
+
 FIXES: dict[str, Fix] = {
     fix.key: fix
     for fix in (
         _sql(), _path(), _cmd(), _deser(), _jwt(), _ssrf(), _upload(), _redirect(),
         _secret(), _debug(), _eval(), _idor(), _xss(), _xxe(), _memory(),
         _checker_ref(), _flag(), _mass_assign(), _ssti(), _debug_route(),
+        _nosql(), _dispatch(), _prefix(), _bounds(), _approve(),
     )
 }
 
@@ -732,6 +895,17 @@ RULE_TO_FIX: dict[str, str] = {
     "mass-assign": "massassign",
     "ssti": "ssti",
     "debug-path": "debugroute",
+    "mongo-nosql-request": "nosql",
+    "py-dynamic-dispatch": "dispatch",
+    "c-prefix-compare": "prefix",
+    "c-index-from-input": "bounds",
+    "cpp-unsigned-index": "bounds",
+    "py-sql-concat": "sql",
+    "py-owner-from-request": "idor",
+    "dj-auto-approved": "approve",
+    "nginx-cookie-upstream": "ssrf",
+    "py-eval": "eval",
+    "py-jwt-noverify": "jwt",
 }
 
 LANGUAGE_LABELS = {

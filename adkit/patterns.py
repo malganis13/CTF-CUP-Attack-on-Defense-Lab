@@ -77,7 +77,7 @@ RULES: tuple[Rule, ...] = (
         why="A filesystem path is joined from request-controlled data without a containment check.",
         patch="Resolve the real path and verify it stays under the intended root; prefer an allowlist.",
         pattern=re.compile(
-            r"""\b(?:os\.path\.join|filepath\.Join|path\.join|Path)\s*\(?[^)\n]*"""
+            r"""\b(?:os\.path\.join|posixpath\.join|filepath\.Join|path\.Join|path\.join|pathlib\.Path|path\.Combine)\s*\([^)\n]*"""
             r"""\b(?:request|params|query|body|filename|name|user_input|user)\b""",
             re.I,
         ),
@@ -189,7 +189,11 @@ RULES: tuple[Rule, ...] = (
         severity="medium",
         why="A password, token or key is embedded in source or a default value.",
         patch="Load secrets from the environment; rotate this value before deployment.",
-        pattern=re.compile(r"""\b(?:password|passwd|secret|api[_-]?key|token)\s*=\s*["'][^"']{6,}["']""", re.I),
+        pattern=re.compile(
+            r"""\b\w*(?:password|passwd|secret|api[_-]?key|token)\w*\s*"""
+            r"""(?::\s*[\w\[\]\.]+\s*)?=\s*["'][^"']{6,}["']""",
+            re.I,
+        ),
     ),
     Rule(
         id="debug-on",
@@ -197,7 +201,10 @@ RULES: tuple[Rule, ...] = (
         severity="medium",
         why="Debug mode or an interactive debugger is enabled.",
         patch="Disable debug and reload in production; it often exposes a console.",
-        pattern=re.compile(r"""\b(?:debug\s*=\s*True|DEBUG\s*=\s*True|app\.run\([^)]*debug\s*=\s*True)"""),
+        pattern=re.compile(
+            r"""\b(?:debug|DEBUG)\s*(?::\s*\w+\s*)?=\s*True"""
+            r"""|app\.run\([^)]*debug\s*=\s*True""",
+        ),
     ),
     Rule(
         id="upload",
@@ -650,7 +657,12 @@ LANG_RULES: tuple[Rule, ...] = (
         severity="high",
         why="The object is loaded by an identifier from the request and returned without checking the owner.",
         patch="Compare the object owner with the session principal before acting; return 404 on mismatch.",
-        pattern=re.compile(r"""\bget_object_or_404\(\s*\w+\s*,\s*(?:pk|id)\s*=|\.objects\.get\(\s*(?:pk|id)\s*="""),
+        pattern=re.compile(
+            r"""\bget_object_or_404\(\s*\w+\s*,\s*(?:pk|id)\s*="""
+            r"""|\.objects\.get\(\s*(?:pk|id)\s*="""
+            r"""|\.objects\.filter\(\s*(?:pk|id)\s*=[^)]*\)\.first\(\)"""
+        ),
+        absent=("request.user", "owner", "user_id", "user=", "user %s", "select 1"),
         languages=("python",),
     ),
     Rule(
@@ -770,6 +782,234 @@ LANG_RULES: tuple[Rule, ...] = (
         patch="Resolve the path and check that it stays inside the public root; ignore the query.",
         pattern=re.compile(r"""(?:EndsWith|endswith|EndsWithOrdinalIgnoreCase|str_ends_with|HasSuffix)\s*\(\s*["']\.(?:html|htm|png|jpe?g|gif|css|js)["']"""),
         languages=("csharp", "pascal", "go", "php", "rust", "python", "ruby"),
+    ),
+    # --- ASP.NET: то, что не находилось в 2020-м -----------------------------
+    Rule(
+        id="cs-unsafe-deserialization",
+        kind="Unsafe deserialization",
+        severity="high",
+        why=("A binary formatter rebuilds objects from untrusted bytes: the type name in the stream "
+             "picks the constructor that runs."),
+        patch="Do not deserialize from the network with BinaryFormatter/LosFormatter; use JSON with a fixed schema.",
+        pattern=re.compile(
+            r"""\bnew\s+(?:BinaryFormatter|LosFormatter|ObjectStateFormatter|SoapFormatter)\s*\("""
+            r"""|TypeNameHandling\s*\.\s*(?:All|Auto|Objects)"""
+            r"""|\bJavaScriptSerializer\s*\(\s*\)\s*\.\s*Deserialize"""
+        ),
+        languages=("csharp",),
+    ),
+    Rule(
+        id="cs-debug-page",
+        kind="Debug mode",
+        severity="high",
+        why="The developer exception page returns the stack trace, the file paths and the variable values to any caller.",
+        patch="Remove UseDeveloperExceptionPage from the production pipeline; log the exception instead.",
+        pattern=re.compile(r"""\bUseDeveloperExceptionPage\s*\(\s*\)"""),
+        languages=("csharp",),
+    ),
+    Rule(
+        id="cs-unsafe-pointer",
+        kind="Unsafe memory copy",
+        severity="medium",
+        why=("Unsafe code reads a length from the stream and takes a pointer to a fixed buffer: a wrong "
+             "length reads or writes past it."),
+        patch="Copy into a span with an explicit bound check; reject lengths above the buffer size.",
+        pattern=re.compile(r"""\bfixed\s*\(\s*byte\s*\*\s*\w+\s*=\s*\w+\s*\)"""),
+        languages=("csharp",),
+    ),
+    # --- слабый токен сессии: md5(имя + предсказуемое) -----------------------
+    Rule(
+        id="py-md5-token",
+        kind="Weak session token",
+        severity="high",
+        why=("The session token is md5 over the user name and a predictable counter: it is computable "
+             "from outside and does not change between rounds."),
+        patch="Random token from secrets.token_urlsafe with a server-side store and an expiry.",
+        pattern=re.compile(
+            r"""\b(?:md5|sha1|hashlib\.md5)\s*\(\s*(?:username|user|login|name)\s*\+"""
+            r"""|\b(?:md5|sha1)\s*\(\s*f?["'][^"']{0,40}\{[^}]*(?:username|user|login)""",
+            re.I,
+        ),
+        languages=("python",),
+    ),
+    # --- 2020–2024: то, что на корпусах давало ноль --------------------------
+    # QExecute 2020: nginx собирает upstream из куки.
+    Rule(
+        id="nginx-cookie-upstream",
+        kind="SSRF",
+        severity="high",
+        why=("The upstream is built from a cookie through nginx `map`: `Cookie: backend=host:port` "
+             "turns the proxy into an open relay to any address the client names."),
+        patch="Drop the cookie map; keep a static upstream list, or a fixed set of names mapped to hosts.",
+        pattern=re.compile(
+            r"""\bproxy_pass\s+https?://\$\w+"""
+            r"""|\bmap\s+\$cookie_\w+\s+\$\w+""",
+            re.I,
+        ),
+    ),
+    # flysim 2024: `what=` уходит прямо в фильтр Mongo.
+    Rule(
+        id="mongo-nosql-request",
+        kind="NoSQL injection",
+        severity="high",
+        why=("The filter is built from the request and handed to the driver: a client sends "
+             "`{\"$regex\": \"^.*\"}` or `{\"$ne\": null}` and reads around the condition."),
+        patch="Accept scalars only, build the filter server-side, reject keys that start with `$`.",
+        pattern=re.compile(
+            r"""(?:\$match|\$regex|\$ne|\$gt|\$where)\s*["']?\s*:"""
+            r"""|\b(?:find|find_one|aggregate|count_documents)\s*\(\s*(?:request|req\.|params|query|body|what\b)""",
+            re.I,
+        ),
+        context=re.compile(r"""(?s)request|req\.|params|query|body|\bwhat\b|json\.loads"""),
+        window=6,
+        once=True,
+    ),
+    Rule(
+        id="py-dynamic-dispatch",
+        kind="Unsafe dynamic call",
+        severity="high",
+        why=("The call name arrives from the client and is looked up in the module globals: every "
+             "function of the module becomes reachable, not only the intended ones."),
+        patch="Dispatch through a fixed dict of allowed names; an unknown name returns an error.",
+        pattern=re.compile(
+            r"""\bglobals\s*\(\s*\)\s*(?:\.get\s*\(|\[)"""
+            r"""|\bgetattr\s*\(\s*(?:self|sys\.modules\[[^\]]*\]|\w+)\s*,\s*(?:request|req\.|params|query|body|name|command|cmd|what)\b""",
+        ),
+        languages=("python",),
+    ),
+    Rule(
+        id="py-eval",
+        kind="Remote code execution",
+        severity="high",
+        why="eval/exec on request data runs whatever the caller writes, imports included.",
+        patch="Remove the call; parse with json or ast.literal_eval, or dispatch through a table.",
+        pattern=re.compile(r"""\b(?:eval|exec)\s*\(\s*(?:request|req\.|params|query|body|what|payload)\b"""),
+        languages=("python",),
+    ),
+    Rule(
+        id="py-jwt-noverify",
+        kind="JWT verification bypass",
+        severity="high",
+        why=("Signature verification is switched off: a token signed by the client itself is accepted."),
+        patch="Verify with the configured algorithm and key; never pass verify_signature=False outside a test.",
+        pattern=re.compile(r"""(?:verify_signature["']?\s*:\s*False|\boptions\s*=\s*\{[^}]*verify_signature)"""),
+        languages=("python",),
+    ),
+    # crud (LetoCTF 2024): сравнение токена останавливается на длине ввода.
+    Rule(
+        id="c-prefix-compare",
+        kind="Auth: prefix compare",
+        severity="high",
+        why=("The comparison stops at the length of the client string: a correct prefix passes, so the "
+             "secret falls byte by byte, and an empty value passes with a zero length."),
+        patch="Reject inputs of the wrong size first, then compare the full length in constant time.",
+        pattern=re.compile(
+            r"""\b(?:strncmp|memcmp|strncasecmp)\s*\([^;]*\b(?:strlen|strnlen)\s*\("""
+            r"""|\bcompare\s*\(\s*0\s*,\s*(?:std::)?min\s*\("""
+            r"""|\.compare\s*\(\s*0\s*,""",
+        ),
+        context=re.compile(
+            r"""(?s)(?:std::)?min\s*\(\s*\w+\.(?:length|size)\(\)\s*,\s*\w+\.(?:length|size)\(\)"""
+            r"""|strncmp|memcmp"""
+        ),
+        window=6,
+        once=True,
+        absent=("CRYPTO_memcmp", "timingsafe", "constant_time"),
+        languages=("c", "cpp"),
+    ),
+    Rule(
+        id="py-sql-concat",
+        kind="SQL injection",
+        severity="high",
+        why=("The query is assembled with `+` from request data: a quote in the input closes the literal "
+             "and the rest of the string becomes SQL."),
+        patch="Pass the value as a parameter: `execute(\"... WHERE username = ?\", (name,))`.",
+        pattern=re.compile(r"""\b(?:execute|executemany|executescript)\s*\("""),
+        context=re.compile(
+            r"""(?s)(?:"[^"\n]*(?:SELECT|INSERT|UPDATE|DELETE|WHERE)[^"\n]*"\s*\+"""
+            r"""|'[^'\n]*(?:SELECT|INSERT|UPDATE|DELETE|WHERE)[^'\n]*'\s*\+"""
+            r"""|f"[^"\n]*\{)"""
+        ),
+        window=4,
+        languages=("python",),
+    ),
+    Rule(
+        id="py-owner-from-request",
+        kind="Business logic: owner from request",
+        severity="high",
+        why=("The owner of the new object is taken from the request body: the object lands in another "
+             "account, and the caller keeps the identifier that reads it."),
+        patch="Take the owner from the session principal; ignore the field in the body.",
+        pattern=re.compile(
+            r"""\b(?:user_id|owner_id|owner|userId|account_id|team_id)\s*[=:]\s*"""
+            r"""(?:request\.|req\.|body\.get|data\.get|payload\[|received\[|json\.loads)""",
+            re.I,
+        ),
+        languages=("python",),
+    ),
+    Rule(
+        id="cpp-unsigned-index",
+        kind="Out of bounds",
+        severity="high",
+        why=("The index is read into an unsigned type and used to reach a container: `-1` becomes the "
+             "largest value of the type, and the bounds check sees a valid index."),
+        patch="Parse into a signed type, reject negative values, then compare with the container size.",
+        pattern=re.compile(r"""\[\s*(?:index|idx)\s*\]"""),
+        context=re.compile(
+            r"""(?s)(?:size_t|unsigned(?:\s+int)?|uint\d+_t)\s+(?:index|idx)\b.{0,400}"""
+            r"""(?:>>|stoul|stoull|atoi|strtoul)\s*(?:\(|(?:index|idx))"""
+        ),
+        window=20,
+        once=True,
+        languages=("c", "cpp"),
+    ),
+    Rule(
+        id="c-index-from-input",
+        kind="Out of bounds",
+        severity="high",
+        why=("The array index is parsed from client input and used without a range check: a negative or "
+             "oversized value reads or writes outside the array."),
+        patch="Reject index < 0 and index >= length before the access; keep the bound check in one place.",
+        pattern=re.compile(r"""\[\s*(?:atoi|atol|strtol|strtoul|std::stoi)\s*\("""),
+        languages=("c", "cpp"),
+    ),
+    Rule(
+        id="rust-path-join",
+        kind="Path traversal",
+        severity="high",
+        why=("The path is built by joining request data onto a root: `..` components climb out of the "
+             "intended directory and the handler reads whatever file the client names."),
+        patch="Resolve the path and check it still starts with the root; reject any `..` component.",
+        pattern=re.compile(
+            r"""\.join\s*\(\s*(?:&?\s*)?(?:request|req\.|params|query|body|name|filename|user|input)\b"""
+            r"""|\bPathBuf::from\s*\(\s*(?:request|req\.|params|query|body|filename|input)\b"""
+        ),
+        languages=("rust",),
+    ),
+    # barker (финал 2020): дружба подтверждается сама.
+    Rule(
+        id="dj-auto-approved",
+        kind="Business logic: auto-approved relation",
+        severity="medium",
+        why=("The approval flag defaults to True: a relation created by the client is valid without the "
+             "other side confirming, and a private object becomes readable through the friend link."),
+        patch="Default to False and set it True only in the accept handler.",
+        pattern=re.compile(
+            r"""\b(?:status|approved|confirmed|accepted|verified|friend\w*)\s*=\s*models\.\w+Field\s*\(\s*default\s*=\s*True""",
+            re.I,
+        ),
+        languages=("python",),
+    ),
+    # VaporService (финал 2020): TTL-очистка не срабатывает никогда.
+    Rule(
+        id="cs-dead-ttl",
+        kind="Business logic: dead branch",
+        severity="medium",
+        why=("Creation time minus UtcNow is always negative, so the TTL comparison never fires: expired "
+             "records stay in storage and their files stay readable."),
+        patch="Compare DateTime.UtcNow.Subtract(creation) with the TTL and test that an expired record is gone.",
+        pattern=re.compile(r"""\bGet(?:Creation|LastWrite)Time(?:Utc)?\s*\([^)]*\)\s*-\s*DateTime\.UtcNow"""),
+        languages=("csharp",),
     ),
 )
 

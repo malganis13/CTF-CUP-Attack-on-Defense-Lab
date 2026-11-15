@@ -81,6 +81,21 @@ EFFORT = {
     "fs-compare-oracle": 3,
     "pas-static-secret": 1,
     "pas-md5-token": 2,
+    "cs-unsafe-deserialization": 3,
+    "cs-debug-page": 1,
+    "py-md5-token": 2,
+    "py-eval": 1,
+    "py-dynamic-dispatch": 2,
+    "py-jwt-noverify": 1,
+    "nginx-cookie-upstream": 1,
+    "mongo-nosql-request": 2,
+    "c-prefix-compare": 2,
+    "c-index-from-input": 1,
+    "cpp-unsigned-index": 2,
+    "py-sql-concat": 1,
+    "py-owner-from-request": 1,
+    "dj-auto-approved": 1,
+    "cs-dead-ttl": 2,
 }
 
 # Дыры, под которые есть готовый публичный запрос: их пробуют в первом раунде.
