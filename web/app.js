@@ -13,13 +13,14 @@ const TITLES = {
   generator: ["Генератор", "проба и заготовка"],
   report: ["Отчёт", "markdown для команды"],
   traffic: ["Трафик", "доказательство: не флуд"],
+  stand: ["Стенд турнира", "сервер, сервисы, команды — схема целиком"],
   map: ["Карта уязвимостей", "класс → файл → строка: что закрыто, что нет"],
   journal: ["Журнал находок", "что было до патча и что стало после"],
   rules: ["Правила сканера", "что находит аудит и как это закрыть"],
   knowledge: ["База знаний", "регламент A/D, патчи, оценка, тренажёр"],
 };
 
-const ORDER = ["connect", "audit", "services", "findings", "files", "generator", "report", "traffic", "map", "journal", "rules", "knowledge"];
+const ORDER = ["connect", "audit", "services", "findings", "files", "generator", "report", "traffic", "stand", "map", "journal", "rules", "knowledge"];
 
 // Цифры остались за прежними вкладками: 9 — правила, 0 — база знаний.
 // Карта и журнал получили буквы, чтобы не сдвигать привычную навигацию.
@@ -67,6 +68,9 @@ const state = {
   sort: "rank",
   map: null,
   journal: null,
+  stand: null,
+  standSelected: null,
+  standEdit: false,
   svcFilter: "",
   liveness: null,
   preflight: null,
@@ -229,6 +233,7 @@ function showTab(name, push) {
   $("#page-sub").textContent = sub;
   if (push !== false && location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
   if (name === "traffic") loadTraffic();
+  if (name === "stand") loadStand();
   if (name === "map") loadMap();
   if (name === "journal") loadJournal();
 }
@@ -2129,6 +2134,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key.toLowerCase() === "r") { $("#btn-run-probe").click(); }
   if (event.key.toLowerCase() === "m") { showTab("map"); }
   if (event.key.toLowerCase() === "j") { showTab("journal"); }
+  if (event.key.toLowerCase() === "s") { showTab("stand"); }
 });
 
 /* ---------- остановка ---------- */
@@ -2276,6 +2282,420 @@ async function loadDrills() {
 }
 
 $("#btn-drill-refresh").addEventListener("click", loadDrills);
+
+/* ---------- стенд турнира ---------- */
+
+const STAND_LAMP = { up: "не лежит", down: "лежит", sick: "ошибки", open: "порт", local: "loopback", unknown: "?" };
+
+async function loadStand() {
+  const status = $("#stand-status");
+  setStatus(status, "читаю стенд…");
+  try {
+    const data = await api("/api/topology");
+    state.stand = data.view;
+    state.standPath = data.path;
+    renderStand();
+    setStatus(status, "");
+  } catch (error) {
+    setStatus(status, error.message, "bad");
+  }
+}
+
+function renderStand() {
+  const view = state.stand;
+  if (!view) return;
+  const sum = view.summary || {};
+  $("#stand-teams").textContent = sum.teams_total || 0;
+  $("#stand-members").textContent = sum.members || 0;
+  $("#stand-services").textContent = sum.services || 0;
+  $("#stand-findings").textContent = sum.findings || 0;
+  $("#stand-open").textContent = sum.open || 0;
+  $("#stand-unsure").textContent = sum.unsure || 0;
+  $("#stand-round").textContent = (view.round && view.round.minutes) || 5;
+
+  const lead = [];
+  if (view.round && view.round.event) lead.push(view.round.event);
+  if (view.model && view.model.team) lead.push("команда: " + view.model.team);
+  if (view.server && view.server.host) lead.push("сервер: " + view.server.host);
+  $("#stand-lead").textContent = lead.join(" · ")
+    || "стенд пуст: нажмите «правка», чтобы завести сервисы, или «заполнить из аудита»";
+
+  renderStandCanvas();
+  renderStandSide();
+  renderStandField();
+}
+
+function buildServiceCard(service) {
+  const card = el("div", "stand-svc " + (service.worst || "info"));
+  if (service.health === "down") card.classList.add("is-down");
+  if (state.standSelected === service.id) card.classList.add("active");
+  card.title = `${service.name} · порт ${service.port || "?"} · риск ${service.risk || 0}/100`;
+
+  const head = el("div", "head");
+  head.appendChild(el("span", "port", service.port ? String(service.port) : "—"));
+  head.appendChild(el("span", "name", service.name));
+  card.appendChild(head);
+  card.appendChild(el("div", "lang", service.language || "язык не задан"));
+
+  const counts = service.counts || {};
+  const bars = el("div", "bars");
+  let total = 0;
+  [["high", counts.high], ["medium", counts.medium], ["low", counts.low]].forEach(([sev, value]) => {
+    if (!value) return;
+    total += value;
+    const part = el("i", sev);
+    part.style.flex = String(value);
+    part.title = `${sev}: ${value}`;
+    bars.appendChild(part);
+  });
+  if (!total) {
+    const empty = el("i");
+    empty.style.flex = "1";
+    bars.appendChild(empty);
+  }
+  card.appendChild(bars);
+
+  const meta = el("div", "meta");
+  meta.appendChild(el("span", "lamp " + (service.health || "unknown"),
+    STAND_LAMP[service.health] || "?"));
+  meta.appendChild(el("span", null, `${total} находок · риск ${service.risk || 0}`));
+  card.appendChild(meta);
+
+  card.addEventListener("click", () => {
+    state.standSelected = state.standSelected === service.id ? null : service.id;
+    renderStandCanvas();
+    renderStandSide();
+  });
+  return card;
+}
+
+function renderStandCanvas() {
+  const canvas = $("#stand-canvas");
+  const view = state.stand;
+  if (!canvas || !view) return;
+
+  const server = $("#stand-server");
+  server.textContent = "";
+  server.appendChild(el("div", "stand-server-name",
+    (view.server && view.server.name) || "наш вулнбокс"));
+  server.appendChild(el("div", "stand-server-host",
+    (view.server && view.server.host) || "адрес не задан"));
+
+  const sum = view.summary || {};
+  const bar = el("div", "stand-server-bar");
+  [["high", sum.high], ["medium", sum.medium], ["low", sum.low]].forEach(([sev, value]) => {
+    if (!value) return;
+    const part = el("span", "seg " + sev);
+    part.style.flex = String(value);
+    part.title = `${sev}: ${value}`;
+    bar.appendChild(part);
+  });
+  if (bar.children.length) server.appendChild(bar);
+  server.appendChild(el("div", "stand-server-note",
+    `${sum.services || 0} сервисов · ${sum.findings || 0} находок`));
+
+  canvas.querySelectorAll(".stand-svc").forEach((node) => node.remove());
+  (view.services || []).forEach((service) => {
+    const card = buildServiceCard(service);
+    card.dataset.id = service.id;
+    card.dataset.worst = service.worst || "info";
+    canvas.appendChild(card);
+  });
+  layoutStand();
+  // Панель могла быть скрыта в момент отрисовки: после показа размеры другие.
+  requestAnimationFrame(layoutStand);
+}
+
+function layoutStand() {
+  const canvas = $("#stand-canvas");
+  const view = state.stand;
+  if (!canvas || !view) return;
+  const width = canvas.clientWidth || 800;
+  const height = canvas.clientHeight || 540;
+  const cards = Array.from(canvas.querySelectorAll(".stand-svc"));
+  const cx = width / 2;
+  const cy = height / 2;
+  const rx = Math.max(110, width * 0.36);
+  const ry = Math.max(100, height * 0.33);
+  const svg = $("#stand-links");
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.textContent = "";
+  cards.forEach((card, index) => {
+    const angle = -Math.PI / 2 + (2 * Math.PI * index) / Math.max(1, cards.length);
+    const x = cx + rx * Math.cos(angle);
+    const y = cy + ry * Math.sin(angle);
+    card.style.left = x + "px";
+    card.style.top = y + "px";
+    card.style.transform = "translate(-50%, -50%)";
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", String(cx));
+    line.setAttribute("y1", String(cy));
+    line.setAttribute("x2", String(x));
+    line.setAttribute("y2", String(y));
+    line.setAttribute("class", "stand-link " + (card.dataset.worst || "info"));
+    svg.appendChild(line);
+  });
+}
+
+function findingRow(finding) {
+  const row = el("div", "srow");
+  row.appendChild(el("span", "dot " + (finding.severity || "info")));
+  row.appendChild(confPill(finding));
+  row.appendChild(el("span", "t", `${finding.kind_ru || finding.rule}`));
+  row.appendChild(el("span", "ln", ":" + (finding.line || 0)));
+  row.addEventListener("click", () => {
+    const full = state.findings.find(
+      (item) => (finding.fingerprint && item.fingerprint === finding.fingerprint)
+        || (finding.id && item.id === finding.id)
+    );
+    if (full) {
+      selectFinding(full);
+      showTab("findings");
+    } else {
+      toast("эта находка не из текущего среза — нужен свежий аудит", "bad");
+    }
+  });
+  return row;
+}
+
+function renderStandSide() {
+  const body = $("#stand-side-body");
+  if (!body) return;
+  body.textContent = "";
+  const view = state.stand;
+  if (!view) return;
+
+  const service = (view.services || []).find((item) => item.id === state.standSelected);
+  if (!service) {
+    body.appendChild(el("h3", null, "Обзор стенда"));
+    body.appendChild(el("p", "lead",
+      "Клик по карточке сервиса покажет его находки: класс, уверенность, строку. "
+      + "Дальше клик по находке открывает её разбор и правку."));
+    const risky = (view.services || [])
+      .slice()
+      .sort((a, b) => (b.risk || 0) - (a.risk || 0))
+      .slice(0, 4);
+    const list = el("div", "scroll");
+    risky.forEach((item) => {
+      const row = el("div", "srow");
+      row.appendChild(el("span", "dot " + (item.worst || "info")));
+      row.appendChild(el("span", "t", `${item.name} · ${item.port || "?"}`));
+      row.appendChild(el("span", "ln", `риск ${item.risk || 0}`));
+      row.addEventListener("click", () => {
+        state.standSelected = item.id;
+        renderStandCanvas();
+        renderStandSide();
+      });
+      list.appendChild(row);
+    });
+    if (risky.length) body.appendChild(list);
+    const loose = (view.loose || []).length;
+    if (loose) {
+      body.appendChild(el("p", "lead",
+        `${loose} находок не привязаны к сервису: у сервиса не задан каталог. `
+        + "Задайте каталог в «правке» или заполните стенд из аудита."));
+    }
+    return;
+  }
+
+  const head = el("div", "head");
+  head.appendChild(el("h3", null, service.name));
+  head.appendChild(el("span", "pill " + (service.worst || "info"), service.worst || "info"));
+  body.appendChild(head);
+  body.appendChild(el("div", "loc",
+    `${service.port ? ":" + service.port : "порт не задан"} · ${service.language || "язык не задан"}`
+    + (service.cwd ? ` · ${service.cwd}` : "")));
+  if (service.url) body.appendChild(el("div", "loc", service.url));
+
+  const grid = el("div", "grid3");
+  const cell = (value, label) => {
+    const box = el("div", "cell");
+    box.appendChild(el("div", "n", String(value)));
+    box.appendChild(el("div", "l", label));
+    return box;
+  };
+  grid.appendChild(cell((service.counts || {}).high || 0, "high"));
+  grid.appendChild(cell((service.confidence || {}).unsure || 0, "не уверен"));
+  grid.appendChild(cell(service.risk || 0, "риск / 100"));
+  body.appendChild(grid);
+
+  const stateLine = el("p", "lead");
+  stateLine.textContent = `живость: ${STAND_LAMP[service.health] || "?"} · `
+    + `открыто: ${(service.status || {}).open || 0} · закрыто: ${(service.status || {}).fixed || 0}`;
+  body.appendChild(stateLine);
+
+  const findings = service.findings || [];
+  body.appendChild(el("h3", null, `Находки: ${findings.length}`));
+  if (!findings.length) {
+    body.appendChild(el("div", "empty", "чисто — либо не сканировали, либо правда чисто"));
+    return;
+  }
+  const list = el("div", "scroll");
+  findings
+    .slice()
+    .sort((a, b) => (SEV_ORDER[a.severity] ?? 9) - (SEV_ORDER[b.severity] ?? 9))
+    .forEach((finding) => list.appendChild(findingRow(finding)));
+  body.appendChild(list);
+}
+
+function renderStandField() {
+  const view = state.stand;
+  if (!view) return;
+  const field = $("#stand-field");
+  field.textContent = "";
+  const total = Number((view.field || {}).teams_total || 0);
+  const shown = Math.min(total, 64);
+  for (let index = 0; index < shown; index += 1) {
+    const dot = el("span", "team-dot" + (index === 0 ? " ours" : ""));
+    dot.title = index === 0 ? "наша команда" : `команда ${index + 1}`;
+    field.appendChild(dot);
+  }
+  if (total > shown) field.appendChild(el("span", "member-chip", `+${total - shown}`));
+  if (!total) field.appendChild(el("span", "empty", "команд на поле не задано"));
+
+  const roster = $("#stand-roster");
+  roster.textContent = "";
+  const members = (view.field || {}).members || [];
+  members.forEach((name) => roster.appendChild(el("span", "member-chip", name)));
+  if (!members.length) roster.appendChild(el("span", "empty", "состав не задан"));
+  $("#stand-field-status").textContent = `${total} команд · ${members.length} в составе`;
+}
+
+/* ---------- правка стенда ---------- */
+
+function openStandEditor() {
+  const view = state.stand;
+  if (!view) return;
+  state.standEdit = true;
+  const model = view.model || {};
+  $("#edit-event").value = model.event || "";
+  $("#edit-team").value = model.team || "";
+  $("#edit-teams").value = model.teams_total || 0;
+  $("#edit-round").value = model.round_minutes || 5;
+  $("#edit-server").value = (model.server || {}).name || "";
+  $("#edit-host").value = (model.server || {}).host || "";
+  $("#edit-members").value = ((view.field || {}).members || []).join("\n");
+  const table = $("#edit-services tbody");
+  table.textContent = "";
+  (model.services || []).forEach((service) => addServiceRow(service));
+  if (!(model.services || []).length) addServiceRow(null);
+  $("#stand-edit-card").hidden = false;
+  $("#btn-stand-edit").textContent = "скрыть правку";
+}
+
+function closeStandEditor() {
+  state.standEdit = false;
+  $("#stand-edit-card").hidden = true;
+  $("#btn-stand-edit").textContent = "правка";
+}
+
+function addServiceRow(service) {
+  const table = $("#edit-services tbody");
+  const row = el("tr");
+  const field = (value, cls, placeholder) => {
+    const cell = el("td");
+    const input = el("input", cls || null);
+    input.value = value || "";
+    input.placeholder = placeholder || "";
+    cell.appendChild(input);
+    row.appendChild(cell);
+    return input;
+  };
+  field((service || {}).name, "svc-name", "notes");
+  field((service || {}).port, "svc-port port-input", "8081");
+  field((service || {}).language, "svc-lang", "python");
+  field((service || {}).cwd, "svc-cwd", "/srv/notes");
+  field((service || {}).notes, "svc-notes", "заметка");
+  const actions = el("td");
+  const remove = el("button", "ghost small", "убрать");
+  remove.addEventListener("click", () => row.remove());
+  actions.appendChild(remove);
+  row.appendChild(actions);
+  table.appendChild(row);
+}
+
+function collectStandModel() {
+  const services = [];
+  Array.from($("#edit-services tbody").rows).forEach((row) => {
+    const pick = (cls) => {
+      const input = row.querySelector("." + cls);
+      return input ? input.value.trim() : "";
+    };
+    const name = pick("svc-name");
+    const port = parseInt(pick("svc-port"), 10) || 0;
+    if (!name && !port) return;
+    services.push({
+      name, port,
+      language: pick("svc-lang"),
+      cwd: pick("svc-cwd"),
+      notes: pick("svc-notes"),
+    });
+  });
+  return {
+    event: $("#edit-event").value.trim(),
+    team: $("#edit-team").value.trim(),
+    teams_total: parseInt($("#edit-teams").value, 10) || 0,
+    round_minutes: parseInt($("#edit-round").value, 10) || 5,
+    server: {
+      name: $("#edit-server").value.trim(),
+      host: $("#edit-host").value.trim(),
+    },
+    members: $("#edit-members").value.split("\n").map((line) => line.trim()).filter(Boolean),
+    services,
+  };
+}
+
+async function saveStand() {
+  const status = $("#stand-edit-status");
+  setStatus(status, "сохраняю…");
+  try {
+    const result = await api("/api/topology", {
+      method: "POST",
+      body: JSON.stringify({ model: collectStandModel() }),
+    });
+    state.stand = result.view;
+    (result.view.notes || []).forEach((note) => toast(note, "warn"));
+    closeStandEditor();
+    renderStand();
+    setStatus(status, "сохранено", "ok");
+    toast("стенд сохранён", "ok");
+  } catch (error) {
+    setStatus(status, error.message, "bad");
+    toast(error.message, "bad");
+  }
+}
+
+async function importStand() {
+  const status = $("#stand-status");
+  setStatus(status, "дополняю из аудита…");
+  try {
+    const result = await api("/api/topology/import", { method: "POST", body: "{}" });
+    state.stand = result.view;
+    renderStand();
+    const info = result.merge || {};
+    setStatus(status, `сервисов в аудите: ${info.found || 0}, добавлено ${info.added || 0}`, "ok");
+    toast(`стенд дополнен: добавлено ${info.added || 0}`, "ok");
+    if (state.standEdit) openStandEditor();
+  } catch (error) {
+    setStatus(status, error.message, "bad");
+    toast(error.message, "bad");
+  }
+}
+
+$("#btn-stand-edit").addEventListener("click", () => {
+  if (state.standEdit) closeStandEditor();
+  else openStandEditor();
+});
+$("#btn-stand-cancel").addEventListener("click", closeStandEditor);
+$("#btn-stand-save").addEventListener("click", saveStand);
+$("#btn-stand-import").addEventListener("click", importStand);
+$("#btn-stand-add").addEventListener("click", () => addServiceRow(null));
+
+let standResize = null;
+window.addEventListener("resize", () => {
+  clearTimeout(standResize);
+  standResize = setTimeout(layoutStand, 120);
+});
 
 /* ---------- глобальный поиск ---------- */
 

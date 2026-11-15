@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlparse
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from adkit import __version__, confidence, drill, fixes, journal, liveness, patch, patterns, preflight, priority, probe, ru
+from adkit import __version__, confidence, drill, fixes, journal, liveness, patch, patterns, preflight, priority, probe, ru, topology
 from adkit.store import Store
 from adkit.audit import Audit, analyze_sources, scan_target
 from adkit.generate import generate_probe, generate_report, pick_endpoint
@@ -520,6 +520,13 @@ class Handler(BaseHTTPRequestHandler):
                                          "reason": "сначала аудит"})
                 else:
                     self.send_json(200, build_map(audit))
+            elif path == "/api/topology":
+                model = topology.load(BASE)
+                self.send_json(200, {
+                    "view": topology.build_view(model, SESSION.get("last_audit"),
+                                                SESSION.get("liveness")),
+                    "path": str(topology.state_dir(BASE) / "topology.json"),
+                })
             elif path == "/api/search":
                 self.send_json(200, search_all(query.get("q", [""])[0]))
             elif path == "/api/liveness":
@@ -747,6 +754,23 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(400, {"error": "run an audit first"})
                     return
                 self.send_json(200, {"markdown": generate_report(audit)})
+            elif path == "/api/topology":
+                model, notes = topology.normalise(body.get("model") or body)
+                saved = topology.save(model, BASE)
+                view = topology.build_view(saved, SESSION.get("last_audit"),
+                                           SESSION.get("liveness"))
+                view["notes"] = notes
+                STORE.log("topology", services=len(saved["services"]),
+                          teams=saved["teams_total"], members=len(saved["members"]))
+                self.send_json(200, {"ok": True, "view": view})
+            elif path == "/api/topology/import":
+                merged, info = topology.merge_audit(topology.load(BASE),
+                                                    SESSION.get("last_audit"))
+                saved = topology.save(merged, BASE)
+                view = topology.build_view(saved, SESSION.get("last_audit"),
+                                           SESSION.get("liveness"))
+                STORE.log("topology-import", **info)
+                self.send_json(200, {"ok": True, "view": view, "merge": info})
             elif path == "/api/status":
                 mark = (body.get("fingerprint") or "").strip()
                 status = (body.get("status") or "").strip()
@@ -963,6 +987,12 @@ def build_server(host: str, port: int, demo: bool = False) -> ThreadingHTTPServe
         try:
             SESSION["last_audit"] = demo_audit()
             remember_audit(SESSION["last_audit"])
+            # Стенд демо-режима: три сервиса полигона, чтобы вкладка «Стенд»
+            # не открывалась пустой. Ручную модель не трогаем.
+            if not (topology.state_dir(BASE) / "topology.json").is_file():
+                model, _ = topology.merge_audit(topology.demo_model(),
+                                                SESSION["last_audit"])
+                topology.save(model, BASE)
         except Exception as exc:  # noqa: BLE001
             print(f"[ad-audit] demo data unavailable: {exc}")
     return ThreadingHTTPServer((host, port), Handler)

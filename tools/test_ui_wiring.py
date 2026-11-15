@@ -44,6 +44,8 @@ def main() -> int:
     check("вкладки есть в ORDER", tabs <= order, ", ".join(sorted(tabs - order)))
 
     check("карта использует /api/map", 'api("/api/map")' in JS)
+    check("стенд использует /api/topology", 'api("/api/topology")' in JS)
+    check("стенд сохраняется кнопкой", 'btn-stand-save' in JS and "saveStand" in JS)
     check("журнал использует /api/journal", 'api("/api/journal")' in JS)
     check("статус отправляется на /api/status", 'api("/api/status"' in JS)
     check("поиск использует /api/search", 'api("/api/search' in JS or '"/api/search"' in JS)
@@ -53,7 +55,7 @@ def main() -> int:
     unsure = "не уверен" in JS and "certain" in JS
     check("уверенность отображается", unsure)
 
-    total = 12
+    total = 14
     print(f"\n{'пройдено' if FAILED == 0 else 'провалено'}: {total - FAILED}/{total}")
     return 0 if FAILED == 0 else 1
 

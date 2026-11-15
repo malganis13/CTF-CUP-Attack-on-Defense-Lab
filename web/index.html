@@ -51,6 +51,10 @@
       </button>
 
       <div class="nav-group">Справка</div>
+      <button data-tab="stand" title="Стенд турнира (S)">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="6" rx="1"/><rect x="4" y="14" width="16" height="6" rx="1"/><path d="M8 7h.01M8 17h.01"/></svg>
+        <span class="label">Стенд</span>
+      </button>
       <button data-tab="map" title="Карта уязвимостей (8)">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v4M12 11v3M6 21v-4M18 21v-4M6 17h12"/><circle cx="12" cy="9" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="19" r="2"/></svg>
         <span class="label">Карта</span>
@@ -80,7 +84,7 @@
         <button id="btn-round" class="ghost small">старт раунда</button>
       </div>
       <div class="side-hint">
-        <kbd>/</kbd> поиск · <kbd>1–9</kbd> разделы · <kbd>M</kbd> карта · <kbd>J</kbd> журнал<br>
+        <kbd>/</kbd> поиск · <kbd>1–9</kbd> разделы · <kbd>S</kbd> стенд · <kbd>M</kbd> карта · <kbd>J</kbd> журнал<br>
         <kbd>G</kbd> проба · <kbd>Esc</kbd> закрыть
       </div>
       <button id="btn-stop" class="ghost small" title="Остановить локальный сервер приложения">Остановить сервер</button>
@@ -516,6 +520,81 @@
           </div>
         </div>
         <div id="map-body" class="map"><div class="empty">сначала аудит</div></div>
+      </section>
+
+      <!-- СТЕНД -->
+      <section class="panel" id="panel-stand">
+        <div class="card" style="margin-bottom:14px">
+          <div class="row" style="gap:22px;flex-wrap:wrap;align-items:flex-end">
+            <div class="stand-stat"><div class="n" id="stand-teams">0</div><div class="l">команд на поле</div></div>
+            <div class="stand-stat"><div class="n" id="stand-members">0</div><div class="l">участников у нас</div></div>
+            <div class="stand-stat"><div class="n" id="stand-services">0</div><div class="l">сервисов</div></div>
+            <div class="stand-stat"><div class="n" id="stand-findings">0</div><div class="l">находок</div></div>
+            <div class="stand-stat"><div class="n" id="stand-open">0</div><div class="l">открытых</div></div>
+            <div class="stand-stat"><div class="n" id="stand-unsure">0</div><div class="l">«не уверен»</div></div>
+            <div class="stand-stat"><div class="n" id="stand-round">5</div><div class="l">минут в раунде</div></div>
+            <div class="grow"></div>
+            <div class="row tight">
+              <button id="btn-stand-import" class="ghost small">заполнить из аудита</button>
+              <button id="btn-stand-edit" class="ghost small">правка</button>
+              <span class="status" id="stand-status"></span>
+            </div>
+          </div>
+          <p class="lead" style="margin:10px 0 0" id="stand-lead"></p>
+        </div>
+
+        <div class="stand-layout">
+          <div class="stand-canvas" id="stand-canvas">
+            <svg class="stand-links" id="stand-links" preserveAspectRatio="none"></svg>
+            <div class="stand-server" id="stand-server"></div>
+          </div>
+          <aside class="stand-side">
+            <div class="card stand-side-card">
+              <div id="stand-side-body"><div class="empty">клик по сервису — покажу его находки</div></div>
+            </div>
+          </aside>
+        </div>
+
+        <div class="card" style="margin-top:14px">
+          <div class="row">
+            <div class="grow">
+              <h2 style="margin:0">Поле и команда</h2>
+              <p class="lead" style="margin:2px 0 0">Сколько команд в игре и кто у нас в составе. Точки — команды, подсвеченная — наша.</p>
+            </div>
+            <span class="status" id="stand-field-status"></span>
+          </div>
+          <div class="team-field" id="stand-field"></div>
+          <div class="member-chips" id="stand-roster"></div>
+        </div>
+
+        <div class="card" id="stand-edit-card" style="margin-top:14px" hidden>
+          <div class="row">
+            <div class="grow">
+              <h2 style="margin:0">Правка стенда</h2>
+              <p class="lead" style="margin:2px 0 0">Данные хранятся в <code>state/topology.json</code>. Аудит их не перезаписывает — только дополняет пустые поля.</p>
+            </div>
+            <button id="btn-stand-cancel" class="ghost small">отмена</button>
+            <button id="btn-stand-save" class="small">сохранить</button>
+          </div>
+          <div class="edit-grid">
+            <label class="field"><span>событие</span><input id="edit-event" placeholder="X Кубок CTF России"></label>
+            <label class="field"><span>наша команда</span><input id="edit-team" placeholder="название"></label>
+            <label class="field"><span>команд на поле</span><input id="edit-teams" type="number" min="0" max="4096" step="1"></label>
+            <label class="field"><span>минут в раунде</span><input id="edit-round" type="number" min="1" max="120" step="1"></label>
+            <label class="field"><span>хост сервера</span><input id="edit-host" placeholder="10.0.0.2"></label>
+            <label class="field"><span>имя сервера</span><input id="edit-server" placeholder="наш вулнбокс"></label>
+          </div>
+          <label class="field" style="margin-top:10px"><span>состав — по одному в строке</span>
+            <textarea id="edit-members" rows="3" placeholder="23:59&#10;второй&#10;третий"></textarea>
+          </label>
+          <h3 style="margin:16px 0 8px">Сервисы</h3>
+          <div class="table-wrap"><table id="edit-services">
+            <thead><tr><th>имя</th><th>порт</th><th>язык</th><th>каталог на сервере</th><th>заметка</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table></div>
+          <button id="btn-stand-add" class="ghost small" style="margin-top:8px">добавить сервис</button>
+          <div class="row" style="margin-top:10px"><span class="status" id="stand-edit-status"></span></div>
+        </div>
       </section>
 
       <!-- ЖУРНАЛ -->

@@ -146,6 +146,54 @@ def main() -> int:
         check("в карте есть открытые", tree.get("status", {}).get("open", 0) > 0,
               str(tree.get("status")))
 
+        stand = get("/api/topology")
+        stand_view = stand.get("view") or {}
+        check("стенд отдаёт модель", "model" in stand_view, str(list(stand_view)[:4]))
+        check("стенд демо засеян сервисами",
+              len(stand_view.get("services", [])) >= 3,
+              str(len(stand_view.get("services", []))))
+        check("стенд видит команды",
+              (stand_view.get("summary") or {}).get("teams_total", 0) >= 1,
+              str(stand_view.get("summary")))
+        check("стенд привязал находки к сервисам",
+              sum(len(item.get("findings", [])) for item in stand_view.get("services", [])) > 0,
+              str([len(item.get("findings", [])) for item in stand_view.get("services", [])]))
+
+        model = stand_view.get("model") or {}
+        changed = {
+            "event": "проверка",
+            "team": "наша",
+            "teams_total": 16,
+            "round_minutes": 7,
+            "server": {"name": "стенд", "host": "10.1.2.3"},
+            "members": ["a", "b", "c"],
+            "services": model.get("services", []) + [
+                {"name": "ручной", "port": 9090, "language": "go", "cwd": "/srv/manual"}],
+        }
+        saved = post("/api/topology", {"model": changed})
+        saved_view = saved.get("view") or {}
+        check("стенд сохраняется", saved.get("ok") is True, str(saved)[:120])
+        check("правка команд сохранена",
+              (saved_view.get("summary") or {}).get("teams_total") == 16,
+              str(saved_view.get("summary")))
+        check("ручной сервис добавлен",
+              any(item.get("port") == 9090 for item in saved_view.get("services", [])),
+              str([item.get("port") for item in saved_view.get("services", [])]))
+        check("раунд сохранён", (saved_view.get("round") or {}).get("minutes") == 7,
+              str(saved_view.get("round")))
+        check("состав сохранён",
+              (saved_view.get("field") or {}).get("members") == ["a", "b", "c"],
+              str((saved_view.get("field") or {}).get("members")))
+
+        imported = post("/api/topology/import", {})
+        check("импорт из аудита отвечает", imported.get("ok") is True, str(imported)[:120])
+        check("импорт не размножает сервисы",
+              len((imported.get("view") or {}).get("services", [])) ==
+              len(saved_view.get("services", [])),
+              str(len((imported.get("view") or {}).get("services", []))))
+        check("стенд пережил перечитывание",
+              (get("/api/topology").get("view") or {}).get("summary", {}).get("teams_total") == 16)
+
         journal = get("/api/journal")
         check("журнал завёл прогон", (journal.get("summary") or {}).get("runs", 0) >= 1)
         check("журнал хранит находки",
