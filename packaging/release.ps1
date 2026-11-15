@@ -4,7 +4,7 @@
 $ErrorActionPreference = "Stop"
 
 $repo = "malganis13/CTF-CUP-Attack-on-Defense-Lab"
-$tag = "v1.10.0"
+$tag = "v1.10.1"
 $exe = "D:\ad-audit-dist\AD-Audit.exe"
 
 $raw = "protocol=https`nhost=github.com`n`n" | git credential fill
@@ -19,6 +19,11 @@ $headers = @{
 
 $notes = @"
 Инструмент для финала X Кубка CTF России (Attack-Defense).
+
+Новое в 1.10.1
+- «Правила сканера»: кнопка «сбросить» снимает текстовый фильтр, фильтр по
+  важности и сортировку столбцов одним нажатием; стрелки возвращаются в «↕»,
+  строки — в исходный порядок каталога.
 
 Новое в 1.10
 - стенд турнира: сервер в центре, вокруг карточки сервисов с портом, языком,
@@ -60,7 +65,7 @@ $notes = @"
 $body = @{
     tag_name         = $tag
     target_commitish = "ad-audit-1.1"
-    name             = "AD Audit 1.10 — стенд турнира"
+    name             = "AD Audit 1.10.1 — сброс фильтров в правилах"
     body             = $notes
 } | ConvertTo-Json -Depth 4
 

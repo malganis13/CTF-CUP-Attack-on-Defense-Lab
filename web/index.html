@@ -640,7 +640,17 @@
               <h2>Правила сканера</h2>
               <p class="lead" style="margin:0">Что находит аудит: класс, чем опасно, как чинить и какой код подставить. Это справка по проверкам, а не турнирный регламент.</p>
             </div>
-            <input id="rules-search" placeholder="фильтр: класс, язык, id" style="max-width:280px">
+            <div class="row tight" style="flex-wrap:wrap;justify-content:flex-end">
+              <input id="rules-search" placeholder="фильтр: класс, язык, id" style="max-width:240px">
+              <div class="sev-chips" id="rules-sev">
+                <button class="sev-chip active" data-sev="">все</button>
+                <button class="sev-chip high" data-sev="high">high</button>
+                <button class="sev-chip medium" data-sev="medium">medium</button>
+                <button class="sev-chip low" data-sev="low">low</button>
+                <button class="sev-chip" data-sev="info">info</button>
+              </div>
+              <button id="btn-rules-reset" class="ghost small" title="Снять фильтр, важность и сортировку столбцов">сбросить</button>
+            </div>
           </div>
           <div class="rules-help">
             <b>Как читать.</b> «Чем опасно» — почему строка является дырой. «Как чинить» — минимальная правка, которая

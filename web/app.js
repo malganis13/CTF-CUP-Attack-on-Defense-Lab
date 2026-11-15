@@ -77,6 +77,7 @@ const state = {
   compare: null,
   logUnit: "",
   rulesFilter: "",
+  rulesSev: "",
   activeFinding: null,
   activeFile: null,
   probe: null,
@@ -1472,10 +1473,13 @@ function makeSortable(table) {
   Array.from(head.rows[0].cells).forEach((cell, index) => {
     const arrow = el("span", "arrow", "↕");
     cell.appendChild(arrow);
-    let ascending = true;
+    // Направление живёт на ячейке, а не в замыкании: тогда «сбросить»
+    // возвращает все столбцы в исходное состояние одним проходом.
+    cell.dataset.asc = "1";
     cell.addEventListener("click", () => {
       const body = table.tBodies[0];
       if (!body) return;
+      const ascending = cell.dataset.asc !== "0";
       // Раскрытый код правила — отдельная строка под своей: сортировать её
       // отдельно значит оторвать код от правила. Тащим парой.
       const groups = [];
@@ -1493,9 +1497,18 @@ function makeSortable(table) {
         return ascending ? result : -result;
       });
       arrow.textContent = ascending ? "↑" : "↓";
-      ascending = !ascending;
+      cell.dataset.asc = ascending ? "0" : "1";
       valued.forEach((item) => item.group.forEach((row) => body.appendChild(row)));
     });
+  });
+}
+
+function resetSort(table) {
+  if (!table || !table.tHead || !table.tHead.rows.length) return;
+  Array.from(table.tHead.rows[0].cells).forEach((cell) => {
+    cell.dataset.asc = "1";
+    const arrow = cell.querySelector(".arrow");
+    if (arrow) arrow.textContent = "↕";
   });
 }
 
@@ -1957,11 +1970,23 @@ function renderRules() {
   const body = $("#rules-table tbody");
   body.textContent = "";
   const needle = state.rulesFilter.trim().toLowerCase();
+  const sev = state.rulesSev || "";
   const rules = rulesCache.filter((rule) => {
+    if (sev && rule.severity !== sev) return false;
     if (!needle) return true;
     return `${rule.id} ${rule.kind} ${rule.kind_ru || ""} ${(rule.languages || []).join(" ")}`
       .toLowerCase().includes(needle);
   });
+  if (!rules.length) {
+    const row = el("tr");
+    const cell = el("td", "empty",
+      state.rulesFilter || sev ? "под фильтр ничего не попало — нажмите «сбросить»" : "правил нет");
+    cell.colSpan = 7;
+    row.appendChild(cell);
+    body.appendChild(row);
+    makeSortable($("#rules-table"));
+    return;
+  }
   rules.forEach((rule) => {
     const row = el("tr");
     row.appendChild(el("td", "cell-mono", rule.id));
@@ -1994,13 +2019,6 @@ function renderRules() {
     row.appendChild(treat);
     body.appendChild(row);
   });
-  if (!rules.length) {
-    const row = el("tr");
-    const cell = el("td", "empty", "нет совпадений");
-    cell.colSpan = 7;
-    row.appendChild(cell);
-    body.appendChild(row);
-  }
   makeSortable($("#rules-table"));
 }
 
@@ -2042,6 +2060,29 @@ $("#rules-search").addEventListener("input", (event) => {
   state.rulesFilter = event.target.value;
   renderRules();
 });
+
+$$("#rules-sev .sev-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    state.rulesSev = chip.dataset.sev || "";
+    $$("#rules-sev .sev-chip").forEach(
+      (node) => node.classList.toggle("active", (node.dataset.sev || "") === state.rulesSev)
+    );
+    renderRules();
+  });
+});
+
+function resetRulesFilters() {
+  state.rulesFilter = "";
+  state.rulesSev = "";
+  $("#rules-search").value = "";
+  $$("#rules-sev .sev-chip").forEach(
+    (node) => node.classList.toggle("active", !(node.dataset.sev || ""))
+  );
+  resetSort($("#rules-table"));
+  renderRules();
+}
+
+$("#btn-rules-reset").addEventListener("click", resetRulesFilters);
 
 $("#rules-to-kb").addEventListener("click", (event) => {
   event.preventDefault();
@@ -2749,6 +2790,11 @@ async function runGlobalSearch(raw) {
         showTab("rules");
         $("#rules-search").value = item.id;
         state.rulesFilter = item.id;
+        // Поиск из шапки должен показать правило, а не спрятать его фильтром важности.
+        state.rulesSev = "";
+        $$("#rules-sev .sev-chip").forEach(
+          (node) => node.classList.toggle("active", !(node.dataset.sev || ""))
+        );
         renderRules();
       });
       box.appendChild(hit);

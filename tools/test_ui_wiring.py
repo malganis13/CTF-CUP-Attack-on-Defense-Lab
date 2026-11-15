@@ -51,11 +51,14 @@ def main() -> int:
     check("поиск использует /api/search", 'api("/api/search' in JS or '"/api/search"' in JS)
     check("сортировка таблиц подключена", "makeSortable" in JS and "makeAllSortable" in JS)
     check("сортировка находок подключена", 'state.sort' in JS and "$(\"#f-sort\")" in JS)
+    check("в правилах есть сброс фильтра",
+          "btn-rules-reset" in JS and "resetRulesFilters" in JS)
+    check("сброс возвращает сортировку", "resetSort" in JS and "#rules-sev .sev-chip" in JS)
 
     unsure = "не уверен" in JS and "certain" in JS
     check("уверенность отображается", unsure)
 
-    total = 14
+    total = 16
     print(f"\n{'пройдено' if FAILED == 0 else 'провалено'}: {total - FAILED}/{total}")
     return 0 if FAILED == 0 else 1
 
