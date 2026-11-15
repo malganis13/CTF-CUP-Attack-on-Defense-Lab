@@ -125,6 +125,10 @@
               <input id="cfg-cookie" type="password" autocomplete="off" spellcheck="false" placeholder="session=… из браузера">
               <span class="hint">только в памяти; без неё проверяется лишь «пускает ли без сессии»</span>
             </label>
+            <label class="field wide">кука второго аккаунта
+              <input id="cfg-cookie-b" type="password" autocomplete="off" spellcheck="false" placeholder="session=… другого пользователя">
+              <span class="hint">даёт доказательство «A видит объект B»: один путь, два аккаунта</span>
+            </label>
           </div>
           <div class="row" style="margin-top:16px">
             <button id="btn-save" class="primary">Сохранить</button>
@@ -344,6 +348,10 @@
             </button>
             <button id="btn-copy-probe" class="ghost">Копировать</button>
             <button id="btn-save-probe" class="ghost">Скачать</button>
+            <label class="check" title="один POST с телом; инструмент пишет в сервис. Включай на своей копии">
+              <input id="g-post" type="checkbox">
+              <span>разрешить POST</span>
+            </label>
             <span class="status" id="g-status"></span>
           </div>
         </div>

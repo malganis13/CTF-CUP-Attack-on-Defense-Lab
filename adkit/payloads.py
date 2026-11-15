@@ -21,6 +21,9 @@ class Payload:
     compare: bool = False
     where: str = "query"          # query | path
     note: str = ""
+    method: str = "GET"           # GET — по умолчанию; POST только по флагу
+    body: str = ""
+    content_type: str = "application/json"
 
 
 SQL_ERROR = r"(?i)(sql syntax|unclosed quotation|sqlite3\.|sqlite error|SQLITE_ERROR|SQLITE_CONSTRAINT|mysql_fetch|pg_query|SQLSTATE|SequelizeDatabaseError|psycopg2\.|ODBC SQL Server|ORA-\d{5}|syntax error at or near)"
@@ -79,6 +82,35 @@ PAYLOADS: dict[str, tuple[Payload, ...]] = {
     ),
 }
 
+# Нагрузки, которые пишут. Отправляются только при явном разрешении в интерфейсе:
+# по умолчанию инструмент read-only, а запись в A/D — это то, что проверяет чекер.
+POST_PAYLOADS: dict[str, tuple[Payload, ...]] = {
+    "Mass assignment": (
+        Payload("role", "", compare=True, method="POST", body='{"role":"admin"}',
+                note="поле роли в теле: если ответ 200 и роль изменилась — mass assignment"),
+        Payload("is-admin", "", compare=True, method="POST", body='{"isAdmin":true}',
+                note="булев флаг прав в теле"),
+        Payload("owner", "", compare=True, method="POST", body='{"userId":1}',
+                note="владелец объекта из тела"),
+    ),
+    "Business logic: balance update": (
+        Payload("negative", "", compare=True, method="POST", body='{"amount":-1000}',
+                note="отрицательная сумма: баланс растёт вместо списания"),
+        Payload("overflow", "", compare=True, method="POST", body='{"amount":999999999}',
+                note="сумма без верхней границы"),
+        Payload("string", "", compare=True, method="POST", body='{"amount":"1e9"}',
+                note="строка вместо числа: приведение типа на сервере"),
+    ),
+    "Business logic: owner from request": (
+        Payload("owner", "", compare=True, method="POST", body='{"username":"admin"}',
+                note="владелец из тела запроса вместо сессии"),
+    ),
+    "IDOR / BOLA": (
+        Payload("post-other-id", "", compare=True, method="POST", body='{"id":2}',
+                note="тело POST с чужим id: маршрут меняет чужой объект"),
+    ),
+}
+
 # Kinds that cannot be tested with one GET. The generator emits a scaffold
 # instead of an active probe, and the UI says so.
 MANUAL_ONLY = frozenset({
@@ -97,9 +129,16 @@ MANUAL_ONLY = frozenset({
 })
 
 
-def payloads_for(kind: str) -> tuple[Payload, ...]:
+def payloads_for(kind: str, method: str = "GET") -> tuple[Payload, ...]:
+    if method == "POST":
+        return POST_PAYLOADS.get(kind, ())
     return PAYLOADS.get(kind, ())
 
 
 def is_probeable(kind: str) -> bool:
+    """Проверяется GET-пробой. Запись сюда не входит: она за флагом."""
     return kind in PAYLOADS and kind not in MANUAL_ONLY
+
+
+def is_post_probeable(kind: str) -> bool:
+    return kind in POST_PAYLOADS

@@ -73,6 +73,14 @@ EFFORT = {
     "debug-path": 3,
     "checker-ref": 3,
     "lua-exec": 2,
+    "dep-cve": 2,
+    "static-sensitive-file": 3,
+    "ext-check-bypass": 2,
+    "cs-model-binding": 3,
+    "cs-plaintext-password": 2,
+    "fs-compare-oracle": 3,
+    "pas-static-secret": 1,
+    "pas-md5-token": 2,
 }
 
 # Дыры, под которые есть готовый публичный запрос: их пробуют в первом раунде.

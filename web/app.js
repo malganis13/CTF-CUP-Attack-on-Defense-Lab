@@ -35,6 +35,10 @@ const AUTH_RU = {
   open: "маршрут не закрыт",
   guarded: "маршрут закрыт",
   unknown: "не определить",
+  shared: "объект виден обоим",
+  isolated: "объект закрыт владельцем",
+  other: "ответил обоим, объекты разные",
+  "no-access": "у A нет доступа",
 };
 
 const SUMMARY_RU = {
@@ -292,6 +296,10 @@ function fillForm() {
   $("#cfg-cookie").placeholder = state.config.has_cookie
     ? "кука уже в памяти — введите новую, чтобы заменить"
     : "session=… из браузера";
+  $("#cfg-cookie-b").value = "";
+  $("#cfg-cookie-b").placeholder = state.config.has_cookie_b
+    ? "кука B уже в памяти — введите новую, чтобы заменить"
+    : "session=… другого пользователя";
   $("#password-row").hidden = $("#cfg-auth").value !== "password";
 }
 
@@ -314,6 +322,8 @@ $("#btn-save").addEventListener("click", async () => {
     if ($("#cfg-auth").value === "password") body.password = $("#cfg-password").value;
     const cookie = $("#cfg-cookie").value.trim();
     if (cookie) body.probe_cookie = cookie;
+    const cookieB = $("#cfg-cookie-b").value.trim();
+    if (cookieB) body.probe_cookie_b = cookieB;
     const result = await api("/api/config", { method: "POST", body: JSON.stringify(body) });
     state.config = result.state;
     renderBadges();
@@ -1213,6 +1223,7 @@ $("#btn-run-probe").addEventListener("click", async () => {
         endpoint: $("#g-endpoint").value.trim() || null,
         port: Number($("#g-port").value) || 80,
         base,
+        post: $("#g-post").checked,
       }),
     });
     state.probeResult = result;
@@ -1247,20 +1258,37 @@ function renderEvidence(result) {
 
   const auth = result.auth;
   if (auth) {
-    const tr = el("tr", "auth-row");
-    tr.appendChild(el("td", "cell-mono", "авторизация"));
-    tr.appendChild(el("td", "cell-mono", (auth.anonymous && auth.anonymous.status) ?? "—"));
-    tr.appendChild(el("td", "cell-mono", (auth.anonymous && auth.anonymous.bytes) ?? "—"));
-    tr.appendChild(el("td", "cell-mono", (auth.anonymous && auth.anonymous.ms) ?? "—"));
-    const verdict = el("td");
-    verdict.appendChild(el("span", "pill verdict-" + (auth.verdict === "open" ? "signal" : "clean"),
-      AUTH_RU[auth.verdict] || auth.verdict));
-    tr.appendChild(verdict);
-    const evidence = el("td", "cell-mono", auth.evidence || auth.note || "");
-    evidence.style.fontSize = "11.5px";
-    evidence.style.color = "var(--muted)";
-    tr.appendChild(evidence);
-    body.appendChild(tr);
+    const pillOf = (verdict) => {
+      const bad = verdict === "open" || verdict === "shared";
+      const warn = verdict === "other" || verdict === "unknown";
+      return "pill verdict-" + (bad ? "signal" : warn ? "diff" : "clean");
+    };
+    const addRow = (label, status, bytes, ms, verdict, evidence) => {
+      const tr = el("tr", "auth-row");
+      tr.appendChild(el("td", "cell-mono", label));
+      tr.appendChild(el("td", "cell-mono", status ?? "—"));
+      tr.appendChild(el("td", "cell-mono", bytes ?? "—"));
+      tr.appendChild(el("td", "cell-mono", ms ?? "—"));
+      const verdictCell = el("td");
+      verdictCell.appendChild(el("span", pillOf(verdict), AUTH_RU[verdict] || verdict));
+      tr.appendChild(verdictCell);
+      const text = el("td", "cell-mono", evidence || "");
+      text.style.fontSize = "11.5px";
+      text.style.color = "var(--muted)";
+      tr.appendChild(text);
+      body.appendChild(tr);
+    };
+
+    if (auth.a && auth.b) {
+      const anon = auth.anonymous || {};
+      addRow("аноним", anon.status, anon.bytes, anon.ms, auth.verdict, "");
+      addRow("аккаунт A", auth.a.status, auth.a.bytes, auth.a.ms, auth.verdict, auth.evidence);
+      addRow("аккаунт B", auth.b.status, auth.b.bytes, auth.b.ms, auth.verdict, "");
+    } else {
+      const anon = auth.anonymous || {};
+      addRow("авторизация", anon.status, anon.bytes, anon.ms, auth.verdict,
+        auth.evidence || auth.note || "");
+    }
   }
 
   if (!(result.results || []).length) {

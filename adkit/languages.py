@@ -25,6 +25,8 @@ EXT_LANG = {
     ".rb": "ruby",
     ".java": "java", ".kt": "kotlin", ".kts": "kotlin",
     ".cs": "csharp",
+    ".fs": "fsharp", ".fsx": "fsharp", ".fsi": "fsharp",
+    ".pas": "pascal", ".dpr": "pascal", ".lpr": "pascal",
     ".c": "c", ".h": "c",
     ".cc": "cpp", ".cpp": "cpp", ".cxx": "cpp", ".hpp": "cpp", ".hh": "cpp",
     ".lua": "lua",

@@ -63,6 +63,7 @@ DEFAULT_CONFIG = {
     "audit": {
         "max_files": 300,
         "max_file_bytes": 262144,
+        "cve_online": True,
     },
 }
 
@@ -70,6 +71,7 @@ SESSION: dict = {
     "config": json.loads(json.dumps(DEFAULT_CONFIG)),
     "password": None,
     "cookie": None,
+    "cookie_b": None,
     "last_audit": None,
     "demo": False,
     "history": [],
@@ -111,6 +113,7 @@ def public_state() -> dict:
         "target": target,
         "has_password": bool(SESSION.get("password")),
         "has_cookie": bool(SESSION.get("cookie")),
+        "has_cookie_b": bool(SESSION.get("cookie_b")),
         "has_audit": SESSION.get("last_audit") is not None,
         "liveness": SESSION.get("liveness") or None,
         "rules": len(patterns.RULES),
@@ -418,6 +421,8 @@ class Handler(BaseHTTPRequestHandler):
                 if "probe_cookie" in body:
                     # Кука живёт только в памяти: на диск, как и пароль, не идёт.
                     SESSION["cookie"] = (body.get("probe_cookie") or "").strip() or None
+                if "probe_cookie_b" in body:
+                    SESSION["cookie_b"] = (body.get("probe_cookie_b") or "").strip() or None
                 save_config(SESSION["config"])
                 self.send_json(200, {"ok": True, "state": public_state()})
             elif path == "/api/test":
@@ -483,11 +488,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, result)
             elif path == "/api/audit":
                 folder = (body.get("path") or "").strip()
+                online = bool((SESSION["config"].get("audit") or {}).get("cve_online", True))
+                if "cve_online" in body:
+                    audit_cfg = SESSION["config"].setdefault("audit", {})
+                    audit_cfg["cve_online"] = bool(body.get("cve_online"))
+                    online = audit_cfg["cve_online"]
+                    save_config(SESSION["config"])
                 if folder:
                     # оффлайн: распакованный архив сервиса или сам архив, без SSH
                     def run_offline(log):
                         log(f"offline scan: {folder}")
-                        result = scan_target(folder, log)
+                        result = scan_target(folder, log, cve_online=online)
                         result["offline"] = True
                         log(f"done: {len(result['findings'])} findings")
                         return result
@@ -507,7 +518,7 @@ class Handler(BaseHTTPRequestHandler):
                     ssh = connect(target, password)
                     try:
                         log(f"connected: {ssh.label()}")
-                        return Audit(ssh, log).run()
+                        return Audit(ssh, log, cve_online=online).run()
                     finally:
                         ssh.close()
 
@@ -542,7 +553,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not base:
                     host = SESSION["config"].get("target", {}).get("host") or "127.0.0.1"
                     base = f"http://{host}:{port}"
-                result = probe.run_for(finding, endpoint, base, port, cookie=SESSION.get("cookie"))
+                result = probe.run_for(finding, endpoint, base, port,
+                                       cookie=SESSION.get("cookie"),
+                                       cookie_b=SESSION.get("cookie_b"),
+                                       allow_post=bool(body.get("post")))
                 result["budget"] = probe.BUDGET.peek()
                 STORE.log("probe", rule=finding.get("rule"), endpoint=endpoint,
                           verdict=(result.get("summary") or {}).get("verdict"),

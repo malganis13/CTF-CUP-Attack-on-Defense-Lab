@@ -6,9 +6,38 @@
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import re
 
-from . import probe
+from . import elf, probe
+
+# Сколько байт бинарника тянем по SSH. Больше — дороже раунда, а заголовки,
+# таблица сегментов и .dynsym у обычного сервисного ELF лежат в начале.
+FETCH_CAP = 3 * 1024 * 1024
+FETCH_COMMAND = (
+    "if command -v base64 >/dev/null 2>&1; then base64 -w0 < {path} 2>/dev/null; "
+    "else base64 < {path} 2>/dev/null | tr -d '\\n'; fi"
+)
+
+
+def scan_elf(data: bytes, path: str) -> list[dict]:
+    """Заголовки и символы ELF → находки. Читается файл, ничего не исполняется."""
+    info = elf.parse_bytes(data, path)
+    if info.error and "not an ELF" in info.error:
+        return []
+    return elf.hardening(info)
+
+
+def fetch(path: str) -> bytes:
+    """Обратная сторона FETCH_COMMAND: текст base64 → байты."""
+    cleaned = "".join(path.split())
+    cleaned += "=" * (-len(cleaned) % 4)
+    try:
+        return base64.b64decode(cleaned, validate=False)
+    except (binascii.Error, ValueError):
+        return b""
+
 
 ELF_COMMAND = (
     "for f in $(find {roots} -maxdepth 6 -type f -size -40M 2>/dev/null | head -800); do "

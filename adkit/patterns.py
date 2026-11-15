@@ -696,7 +696,7 @@ LANG_RULES: tuple[Rule, ...] = (
         severity="medium",
         why="A host directory is mounted into the pod: code in the container writes to the node filesystem.",
         patch="Use a dedicated volume or CSI; never mount /, /etc, /var/run or the docker socket.",
-        pattern=re.compile(r"""\bhostPath:\s*$|path:\s*["']?/(?:etc|var/run|root|)\b""", re.M),
+        pattern=re.compile(r"""\bhostPath:\s*$|\bpath:\s*["']?/(?:etc|var|root|home|proc|sys|dev|boot)(?:/|["']|$)""", re.M),
     ),
     Rule(
         id="secret-minio-default",
@@ -706,12 +706,122 @@ LANG_RULES: tuple[Rule, ...] = (
         patch="Generate credentials at deploy time and pass them through a secret.",
         pattern=re.compile(r"""\bminioadmin\b|access_key\s*[:=]\s*["'][A-Z0-9]{16,}["']""", re.I),
     ),
+    # --- C# / F# / Pascal: то, что давало ноль находок на корпусе 2019 ---------
+    Rule(
+        id="cs-model-binding",
+        kind="Mass assignment",
+        severity="high",
+        why=("The action takes the entity itself as a parameter: the model binder fills every "
+             "property present in the request, including the owner id and the role."),
+        patch=("Take a dedicated view model with only the editable fields, or bind them one by "
+               "one and set the owner from the session."),
+        pattern=re.compile(r"""(?:IActionResult|ActionResult|Task\s*<\s*IActionResult\s*>)\s+\w+\s*\(\s*(?!(?:string|int|long|bool|Guid|IFormFile|CancellationToken|int\?|long\?)\b)([A-Z]\w+)\s+\w+\s*[,)]"""),
+        context=re.compile(r"""(?s)\.(?:UserId|OwnerId|Owner|Role|IsAdmin|Balance)\b.{0,400}|^.{0,400}\.(?:UserId|OwnerId|Owner|Role|IsAdmin|Balance)\b"""),
+        window=14,
+        once=True,
+        languages=("csharp",),
+    ),
+    Rule(
+        id="cs-plaintext-password",
+        kind="Hardcoded secret",
+        severity="high",
+        why="The password is stored as it arrived: the database dump or a static file exposes every account.",
+        patch="Hash with a slow KDF (bcrypt/argon2/PBKDF2) and compare hashes, not strings.",
+        pattern=re.compile(r"""\bPassword\s*=\s*(?:password|req\.|model\.|_?password\b|user\.Password)"""),
+        languages=("csharp",),
+    ),
+    Rule(
+        id="fs-compare-oracle",
+        kind="Business logic: comparison oracle",
+        severity="medium",
+        why=("User input is compared to the stored secret and the answer tells whether the guess "
+             "was right: the value is recovered character by character without ever reading it."),
+        patch="Compare a hash in constant time and never return a per-guess verdict; delete the endpoint.",
+        pattern=re.compile(r"""\.(?:IsEqual|Equals)\s*\(\s*\w+\.\w+\s*\)"""),
+        context=re.compile(r"""(?s)(?:Success|success|Valid|valid).{0,300}\.(?:IsEqual|Equals)\s*\(|\.(?:IsEqual|Equals)\s*\(.{0,300}(?:Success|success|Valid|valid)"""),
+        window=8,
+        once=True,
+        languages=("fsharp",),
+    ),
+    Rule(
+        id="pas-static-secret",
+        kind="Hardcoded secret",
+        severity="high",
+        why="The signing secret is a literal in the source: anyone with the binary signs their own token.",
+        patch="Read the secret from the environment at start; rotate it per round.",
+        pattern=re.compile(r"""\bsecret\s*:=\s*'[^']{3,}'""", re.I),
+        languages=("pascal",),
+    ),
+    Rule(
+        id="pas-md5-token",
+        kind="Weak session token",
+        severity="high",
+        why="The session token is a hash of the user name plus a constant: it is computable by anyone.",
+        patch="Use a random token with a server-side session store and an expiry.",
+        pattern=re.compile(r"""(?:\bmd5\s*\(\s*\w+\s*\+|Createmd5\s*\(\s*\w+\s*\+)""", re.I),
+        languages=("pascal",),
+    ),
+    Rule(
+        id="ext-check-bypass",
+        kind="Path traversal",
+        severity="high",
+        why=("The served file is gated by the suffix of the request path, and the query string is "
+             "not part of that check: `file.txt?a=.html` passes while serving the txt."),
+        patch="Resolve the path and check that it stays inside the public root; ignore the query.",
+        pattern=re.compile(r"""(?:EndsWith|endswith|EndsWithOrdinalIgnoreCase|str_ends_with|HasSuffix)\s*\(\s*["']\.(?:html|htm|png|jpe?g|gif|css|js)["']"""),
+        languages=("csharp", "pascal", "go", "php", "rust", "python", "ruby"),
+    ),
 )
 
 RULES: tuple[Rule, ...] = RULES + LANG_RULES
 
 # Сборки, вендоренные копии и минифицированные бандлы: находки в них — шум,
 # который отнимает внимание в раунде (three.core.min.js, chunk-vendors, crow/json.h).
+STATIC_ROOTS = (
+    "/wwwroot/", "/public/", "/static/", "/assets/", "/htdocs/", "/www/",
+    "\\wwwroot\\", "\\public\\", "\\static\\", "\\assets\\",
+)
+SENSITIVE_SUFFIX = (
+    ".db", ".sqlite", ".sqlite3", ".bak", ".old", ".orig", ".log",
+    ".env", ".pem", ".key", ".txt", ".csv", ".json", ".zip", ".tar", ".gz",
+)
+
+
+def _static_exposure(path: str) -> dict | None:
+    """Файл лежит в публичном корне и отдаётся как статика.
+
+    Это не строка кода, а место файла: `wwwroot/data/choco.db` отдаётся
+    веб-сервером целиком, потому что лежит в каталоге статики. Сканер правил
+    такое не увидит — он смотрит содержимое. Смотрим путь.
+    """
+    normalised = path.replace("\\", "/").lower()
+    marked = f"/{normalised.strip('/')}"
+    if not any(root.strip("/\\") in marked for root in STATIC_ROOTS):
+        return None
+    if not normalised.endswith(SENSITIVE_SUFFIX):
+        return None
+    name = normalised.rsplit("/", 1)[-1]
+    if name in {"package.json", "package-lock.json", "manifest.json", "tsconfig.json"}:
+        return None
+    return {
+        "id": hashlib.sha1(f"{path}:static".encode()).hexdigest()[:10],
+        "rule": "static-sensitive-file",
+        "kind": "Static file exposure",
+        "severity": "high",
+        "file": path,
+        "line": 1,
+        "snippet": name,
+        "context": [],
+        "context_start": 1,
+        "why": ("The file is inside the public root and has a sensitive suffix: the web server "
+                "hands it out to anyone who guesses the name."),
+        "patch": ("Move it outside the static root and serve it through an authorized handler; "
+                  "rename or delete the copy that is already published."),
+        "checker_risk": "low",
+        "language": "text",
+    }
+
+
 GENERATED_MARKERS = (
     "/node_modules/",
     "/vendor/",
@@ -758,6 +868,10 @@ def scan_text(path: str, text: str, language: str | None = None) -> list[dict]:
     detected = language or language_of(path, text)
     if is_generated(path, lines):
         return findings
+    exposed = _static_exposure(path)
+    if exposed:
+        findings.append(exposed)
+        seen_kind.add((exposed["kind"], 1))
     for rule in RULES:
         if rule.languages and detected not in rule.languages:
             continue
@@ -816,20 +930,34 @@ def scan_text(path: str, text: str, language: str | None = None) -> list[dict]:
             window_text = "\n".join(lines[low:high])
             if rule.context.search(window_text) is None:
                 continue
-            if (rule.id, number) in seen:
+            # Строка находки — сам опасный вызов внутри окна, а не его начало:
+            # иначе контекстное правило указывает на первую строку окна, и в
+            # отчёте появляется `}` вместо `IsEqual(...)`. Если вызова в окне
+            # нет — это не находка, а совпадение контекста.
+            anchor = None
+            for offset in range(low, high):
+                candidate = lines[offset]
+                if candidate.lstrip().startswith(("//", "/*", "*", "<!--", "--")):
+                    continue
+                if rule.pattern.search(candidate):
+                    anchor = offset + 1
+                    break
+            if anchor is None:
                 continue
-            seen.add((rule.id, number))
-            digest = hashlib.sha1(f"{path}:{number}:{rule.id}".encode()).hexdigest()[:10]
+            if (rule.id, anchor) in seen:
+                continue
+            seen.add((rule.id, anchor))
+            digest = hashlib.sha1(f"{path}:{anchor}:{rule.id}".encode()).hexdigest()[:10]
             findings.append({
                 "id": digest,
                 "rule": rule.id,
                 "kind": rule.kind,
                 "severity": rule.severity,
                 "file": path,
-                "line": number,
-                "snippet": lines[number - 1].strip()[:240],
-                "context": lines[max(0, number - 4): min(len(lines), number + 3)],
-                "context_start": max(0, number - 4) + 1,
+                "line": anchor,
+                "snippet": lines[anchor - 1].strip()[:240],
+                "context": lines[max(0, anchor - 4): min(len(lines), anchor + 3)],
+                "context_start": max(0, anchor - 4) + 1,
                 "why": rule.why,
                 "patch": rule.patch,
                 "checker_risk": "high",

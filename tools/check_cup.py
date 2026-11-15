@@ -42,6 +42,8 @@ def collect(root: Path) -> dict[str, dict[str, list[dict]]]:
             if path.suffix.lower() not in {
                 ".py", ".js", ".ts", ".mjs", ".cjs", ".php", ".rb", ".go", ".rs",
                 ".java", ".kt", ".cs", ".c", ".h", ".cc", ".cpp", ".hpp", ".lua",
+                ".fs", ".fsx", ".pas", ".dpr", ".lpr",
+                ".json", ".toml", ".mod", ".xml", ".lock", ".txt", ".yml", ".yaml",
             }:
                 continue
             try:

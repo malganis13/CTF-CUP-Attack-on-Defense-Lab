@@ -13,8 +13,8 @@ import time
 import zipfile
 from pathlib import Path
 
-from . import binaries, patterns, priority, ru
-from .binaries import ELF_COMMAND, STRINGS_COMMAND
+from . import binaries, cve, deps, elf, patterns, priority, ru
+from .binaries import ELF_COMMAND, FETCH_COMMAND, STRINGS_COMMAND
 from .languages import detect_stacks, stack_for
 from .ssh import BaseSSH
 
@@ -357,7 +357,8 @@ def attach_endpoint(endpoints: list[dict], lines: list[str], read_line: int, sin
     return nearest["path"]
 
 
-def analyze_sources(sources: dict[str, str], services: list[dict], host: str) -> dict:
+def analyze_sources(sources: dict[str, str], services: list[dict], host: str,
+                    cve_online: bool = False) -> dict:
     findings: list[dict] = []
     files: list[dict] = []
     endpoints: list[dict] = []
@@ -393,6 +394,10 @@ def analyze_sources(sources: dict[str, str], services: list[dict], host: str) ->
         })
 
     stacks = detect_stacks(sources)
+    dependencies = deps.parse_sources(sources)
+    if dependencies:
+        for finding in cve.check(dependencies, online=cve_online):
+            findings.append(finding)
     enriched_services = []
     for service in services:
         item = dict(service)
@@ -447,14 +452,18 @@ def analyze_sources(sources: dict[str, str], services: list[dict], host: str) ->
         "meta": {
             "roots": sorted({str(Path(item["path"]).parent) for item in files})[:50],
             "source_files": len(files),
+            "dependencies": len(dependencies),
+            "deps_by_ecosystem": deps.summary(dependencies),
+            "cve_online": bool(cve_online) and not cve.online_broken(),
         },
     }
 
 
 class Audit:
-    def __init__(self, ssh: BaseSSH, log) -> None:
+    def __init__(self, ssh: BaseSSH, log, cve_online: bool = True) -> None:
         self.ssh = ssh
         self.log = log
+        self.cve_online = cve_online
         self.commands: list[str] = []
 
     def _run(self, command: str, timeout: int = 40) -> str:
@@ -483,7 +492,12 @@ class Audit:
         return [line.strip() for line in out.splitlines() if line.strip().startswith("/")][:80]
 
     def _scan_binaries(self, roots: list[str]) -> list[dict]:
-        """Строки ELF-бинарников в каталогах сервисов: оболочка, строки C, флаги."""
+        """ELF: заголовки, символы и строки.
+
+        Порядок такой: файл забирается целиком (до FETCH_CAP) и разбирается как
+        ELF — так видны импорты по таблице символов, PIE, стек и RELRO. Если
+        забрать не вышло, остаются строки: это слабее, но честно помечено.
+        """
         roots = [root for root in roots if root.startswith("/")]
         if not roots:
             return []
@@ -494,6 +508,13 @@ class Audit:
             return []
         findings: list[dict] = []
         for path in paths:
+            raw = self._run(FETCH_COMMAND.format(path=shlex.quote(path)), timeout=90)
+            data = binaries.fetch(raw)
+            if data[:4] == elf.ELF_MAGIC:
+                parsed = binaries.scan_elf(data, path)
+                findings.extend(parsed)
+                if parsed:
+                    continue
             text = self._run(STRINGS_COMMAND.format(path=shlex.quote(path)), timeout=30)
             findings.extend(binaries.scan_strings(text, path))
         self.log(f"binaries: {len(paths)} files, {len(findings)} findings")
@@ -545,7 +566,7 @@ class Audit:
         self.log(f"source files: {len(files)}; manifests: {len(manifests)}")
         sources = self._read_files(sorted(set(files) | set(manifests)))
         self.log(f"read {len(sources)} files; scanning")
-        result = analyze_sources(sources, services, self.ssh.label())
+        result = analyze_sources(sources, services, self.ssh.label(), cve_online=self.cve_online)
         try:
             result["findings"].extend(self._scan_binaries(roots))
         except Exception as exc:  # noqa: BLE001 - бинарники не должны ронять аудит
@@ -564,9 +585,11 @@ class Audit:
 # Оффлайн-аудит: распакованный архив сервиса, без SSH и без живого хоста.
 OFFLINE_SUFFIXES = (
     ".py", ".pyw", ".go", ".rs", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx",
-    ".php", ".phtml", ".rb", ".java", ".kt", ".cs", ".c", ".h", ".cc", ".cpp",
-    ".hpp", ".hh", ".lua", ".pl", ".pm", ".sql", ".proto", ".graphql", ".sh",
+    ".php", ".phtml", ".rb", ".java", ".kt", ".cs", ".fs", ".fsx", ".pas", ".dpr", ".lpr",
+    ".c", ".h", ".cc", ".cpp", ".hpp", ".hh", ".lua", ".pl", ".pm", ".sql", ".proto",
+    ".graphql", ".sh",
     ".yml", ".yaml", ".toml", ".ini", ".conf", ".service", ".tf", ".tpl",
+    ".json", ".mod", ".xml", ".lock", ".txt", ".gradle", ".csproj", ".fsproj", ".sln",
 )
 OFFLINE_SKIP = {
     "node_modules", ".git", "__pycache__", "vendor", "dist", "build", "target",
@@ -574,7 +597,7 @@ OFFLINE_SKIP = {
 }
 
 
-def scan_directory(root: str, log=lambda message: None) -> dict:
+def scan_directory(root: str, log=lambda message: None, cve_online: bool = False) -> dict:
     """Аудит каталога: тот же движок, только источники берутся с диска."""
     base = Path(root).expanduser()
     if not base.is_dir():
@@ -593,7 +616,46 @@ def scan_directory(root: str, log=lambda message: None) -> dict:
             continue
         sources[str(path)] = text[:262144]
     log(f"offline files: {len(sources)}")
-    return analyze_sources(sources, [], f"offline:{base}")
+    result = analyze_sources(sources, [], f"offline:{base}", cve_online=cve_online)
+    result["findings"].extend(_scan_local_binaries(base, log))
+    result["findings"].sort(key=priority.sort_key)
+    result["counts"] = {
+        severity: sum(1 for item in result["findings"] if item["severity"] == severity)
+        for severity in ("high", "medium", "low", "info")
+    }
+    return result
+
+
+def _scan_local_binaries(base: Path, log) -> list[dict]:
+    """ELF-файлы в каталоге: заголовки, символы, защиты.
+
+    Читается файл, ничего не исполняется. Размер ограничен: таблица символов
+    у сервисного бинарника лежит рядом с кодом, гигабайтные образы читать
+    незачем.
+    """
+    findings: list[dict] = []
+    try:
+        candidates = [path for path in base.rglob("*") if path.is_file()]
+    except OSError:
+        return findings
+    for path in candidates:
+        try:
+            if path.stat().st_size > 8 * 1024 * 1024:
+                continue
+        except OSError:
+            continue
+        if not elf.is_elf(str(path)):
+            continue
+        info = elf.parse_file(str(path))
+        found = elf.hardening(info)
+        for item in found:
+            item["kind_ru"] = ru.kind_ru(item["kind"])
+            item["patch_ru"] = ru.patch_ru(item["rule"], item["patch"])
+            priority.enrich(item)
+        findings.extend(found)
+    if findings:
+        log(f"local binaries: {len(findings)} findings")
+    return findings
 
 
 ARCHIVE_SUFFIXES = (".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz")
@@ -643,7 +705,7 @@ def _extract(archive: Path, into: Path) -> None:
                 sink.write(source.read())
 
 
-def scan_target(path: str, log=lambda message: None) -> dict:
+def scan_target(path: str, log=lambda message: None, cve_online: bool = False) -> dict:
     """Аудит без SSH: каталог или архив сервиса, снятый с машины любым способом.
 
     Это второй вход в тот же движок. Нужен там, где SSH к сервису нет: архив
@@ -651,14 +713,14 @@ def scan_target(path: str, log=lambda message: None) -> dict:
     """
     base = Path(path).expanduser()
     if base.is_dir():
-        return scan_directory(str(base), log)
+        return scan_directory(str(base), log, cve_online=cve_online)
     if base.is_file() and _is_archive(base):
         log(f"archive: {base.name}")
         with tempfile.TemporaryDirectory(prefix="ad-audit-") as workdir:
             extracted = Path(workdir) / "src"
             extracted.mkdir()
             _extract(base, extracted)
-            result = scan_directory(str(extracted), log)
+            result = scan_directory(str(extracted), log, cve_online=cve_online)
         result["source"] = str(base)
         return result
     raise FileNotFoundError(f"нет ни каталога, ни архива: {path}")
