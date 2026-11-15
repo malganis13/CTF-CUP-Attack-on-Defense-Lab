@@ -1,4 +1,4 @@
-# build.ps1 — собирает AD-Audit.exe без окна консоли.
+﻿# build.ps1 — собирает AD-Audit.exe без окна консоли.
 #
 #   .\packaging\windows\build.ps1                 # в dist рядом с проектом
 #   .\packaging\windows\build.ps1 -OutDir D:\dist # на другой диск
@@ -24,6 +24,10 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "== сборка -> $OutDir\AD-Audit.exe"
+# PyInstaller пишет прогресс в stderr; при ErrorActionPreference=Stop это
+# выглядит как ошибка. На время вызова глушим строгий режим и смотрим код.
+$previous = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 python -m PyInstaller `
     --noconfirm --clean --onefile --noconsole `
     --name AD-Audit `
@@ -34,6 +38,9 @@ python -m PyInstaller `
     --workpath "$WorkDir" `
     --specpath "$WorkDir" `
     (Join-Path $root "launcher.py")
+$code = $LASTEXITCODE
+$ErrorActionPreference = $previous
+if ($code -ne 0) { throw "pyinstaller завершился с кодом $code" }
 
 $exe = Join-Path $OutDir "AD-Audit.exe"
 if (-not (Test-Path $exe)) { throw "exe не собрался" }
