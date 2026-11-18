@@ -4,7 +4,7 @@
 $ErrorActionPreference = "Stop"
 
 $repo = "malganis13/CTF-CUP-Attack-on-Defense-Lab"
-$tag = "v1.12.0"
+$tag = "v1.12.1"
 $exe = "D:\ad-audit-dist\AD-Audit.exe"
 
 $raw = "protocol=https`nhost=github.com`n`n" | git credential fill
@@ -19,6 +19,16 @@ $headers = @{
 
 $notes = @"
 Инструмент для финала X Кубка CTF России (Attack-Defense).
+
+Новое в 1.12.1
+- интерфейс перестал зависеть от старого Edge: убраны `??` и спред-объекты,
+  на которых EdgeHTML падал при разборе app.js и оставлял мёртвые кнопки;
+- обработчики вкладок и таблиц навешиваются до первого запроса к серверу:
+  медленный или недоступный localhost больше не делает страницу некликабельной;
+- если скрипт не загрузился, упал или открыт старый Edge/режим IE, сверху
+  появляется баннер с причиной и подсказкой, а не пустой интерфейс;
+- app.js проверяется как ES2017 (acorn) и на отсутствие ES2020-синтаксиса;
+- мелочь: встроенная иконка, без 404 на favicon.
 
 Новое в 1.12
 - вход по паролю: поле видно всегда, пароль живёт только в памяти; в exe
@@ -82,7 +92,7 @@ $notes = @"
   регрессия закреплена tools/test_cup_years.py;
 - тесты: smoke 131/131, probe 42/42, authdiff 18/18, deps+cve 21/21,
   offline+patch 12/12, confidence 9/9, journal 18/18, topology 34/34,
-  flow 20/20, remote 20/20, ui 21/21;
+  flow 20/20, remote 20/20, ui 23/23;
 - compileall и node --check чистые.
 
 Запуск
@@ -93,7 +103,7 @@ $notes = @"
 $body = @{
     tag_name         = $tag
     target_commitish = "ad-audit-1.1"
-    name             = "AD Audit 1.12 — пароли, службы на цели, точный адрес"
+    name             = "AD Audit 1.12.1 — интерфейс в старом Edge и живой до сервера"
     body             = $notes
 } | ConvertTo-Json -Depth 4
 

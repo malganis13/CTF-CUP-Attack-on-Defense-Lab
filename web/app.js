@@ -96,6 +96,12 @@ function el(tag, className, text) {
   return node;
 }
 
+// Замена nullish-оператора без синтаксиса ES2020: старый Edge падает
+// на разборе всего файла — интерфейс остаётся мёртвым.
+function nz(value, fallback) {
+  return value === null || value === undefined ? fallback : value;
+}
+
 function esc(value) {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -468,7 +474,7 @@ function ingest(audit) {
   state.audit = audit;
   state.findings = (audit.findings || []).slice().sort(
     (a, b) =>
-      (a.rank ?? (SEV_ORDER[a.severity] ?? 9) * 10) - (b.rank ?? (SEV_ORDER[b.severity] ?? 9) * 10) ||
+      (nz(a.rank, nz(SEV_ORDER[a.severity], 9) * 10)) - (nz(b.rank, nz(SEV_ORDER[b.severity], 9) * 10)) ||
       (a.file || "").localeCompare(b.file || "") ||
       (a.line || 0) - (b.line || 0)
   );
@@ -621,7 +627,7 @@ function renderServices() {
     if (service.stack) stackCell.appendChild(el("span", "pill", service.stack));
     else { stackCell.textContent = "—"; stackCell.className = "empty"; }
     row.appendChild(stackCell);
-    row.appendChild(el("td", "cell-mono", service.pid ?? "—"));
+    row.appendChild(el("td", "cell-mono", nz(service.pid, "-")));
     row.appendChild(el("td", "cell-mono", service.cwd || "—"));
     const cmd = el("td", "cell-mono", service.cmdline || "—");
     cmd.style.maxWidth = "380px";
@@ -887,8 +893,8 @@ function visibleFindings() {
 }
 
 function sortFindings(items) {
-  const score = (item) => ((item.confidence || {}).score ?? 50);
-  const sev = (item) => SEV_ORDER[item.severity] ?? 9;
+  const score = (item) => nz((item.confidence || {}).score, 50);
+  const sev = (item) => nz(SEV_ORDER[item.severity], 9);
   const list = items.slice();
   switch (state.sort) {
     case "severity":
@@ -911,7 +917,7 @@ function sortFindings(items) {
       break;
     default:
       list.sort((a, b) =>
-        (a.rank ?? sev(a) * 10) - (b.rank ?? sev(b) * 10) ||
+        (nz(a.rank, sev(a) * 10)) - (nz(b.rank, sev(b) * 10)) ||
         (a.file || "").localeCompare(b.file || "") ||
         (a.line || 0) - (b.line || 0));
   }
@@ -1297,8 +1303,7 @@ function renderMap() {
   let shown = 0;
   map.nodes.forEach((node) => {
     const files = node.files
-      .map((file) => ({
-        ...file,
+      .map((file) => Object.assign({}, file, {
         findings: file.findings.filter((finding) => {
           if (filters.openOnly && finding.status !== "open" && finding.status !== "regressed") return false;
           if (filters.certain && finding.confidence !== "certain") return false;
@@ -1657,7 +1662,7 @@ async function readFile(path) {
     const hits = new Map();
     (result.findings || []).forEach((finding) => {
       const current = hits.get(finding.line);
-      if (!current || (SEV_ORDER[finding.severity] ?? 9) < (SEV_ORDER[current.severity] ?? 9)) {
+      if (!current || nz(SEV_ORDER[finding.severity], 9) < nz(SEV_ORDER[current.severity], 9)) {
         hits.set(finding.line, finding);
       }
     });
@@ -1868,7 +1873,7 @@ function renderEvidence(result) {
   const summary = result.summary || {};
   const budget = result.budget || null;
   $("#g-verdict").textContent = (SUMMARY_RU[summary.verdict] || summary.verdict || "") +
-    ` · запросов ${summary.requests ?? 0}, сигналов ${summary.signals ?? 0}, отличий ${summary.diffs ?? 0}` +
+    ` · запросов ${nz(summary.requests, 0)}, сигналов ${nz(summary.signals, 0)}, отличий ${nz(summary.diffs, 0)}` +
     (summary.auth ? ` · авторизация: ${AUTH_RU[summary.auth] || summary.auth}` : "") +
     (budget ? ` · бюджет ${budget.used}/${budget.capacity}` : "");
 
@@ -1882,9 +1887,9 @@ function renderEvidence(result) {
     const addRow = (label, status, bytes, ms, verdict, evidence) => {
       const tr = el("tr", "auth-row");
       tr.appendChild(el("td", "cell-mono", label));
-      tr.appendChild(el("td", "cell-mono", status ?? "—"));
-      tr.appendChild(el("td", "cell-mono", bytes ?? "—"));
-      tr.appendChild(el("td", "cell-mono", ms ?? "—"));
+      tr.appendChild(el("td", "cell-mono", nz(status, "—")));
+      tr.appendChild(el("td", "cell-mono", nz(bytes, "—")));
+      tr.appendChild(el("td", "cell-mono", nz(ms, "—")));
       const verdictCell = el("td");
       verdictCell.appendChild(el("span", pillOf(verdict), AUTH_RU[verdict] || verdict));
       tr.appendChild(verdictCell);
@@ -1982,11 +1987,11 @@ function renderTraffic(profile) {
   trafficCache = profile;
   const summary = profile.summary || {};
   const caps = profile.caps || {};
-  $("#tr-total").textContent = summary.total ?? 0;
-  $("#tr-minute").textContent = summary.last_minute ?? 0;
-  $("#tr-bytes").textContent = summary.bytes ?? 0;
-  $("#tr-avg").textContent = summary.avg_bytes ?? 0;
-  $("#tr-ms").textContent = summary.avg_ms ?? 0;
+  $("#tr-total").textContent = nz(summary.total, 0);
+  $("#tr-minute").textContent = nz(summary.last_minute, 0);
+  $("#tr-bytes").textContent = nz(summary.bytes, 0);
+  $("#tr-avg").textContent = nz(summary.avg_bytes, 0);
+  $("#tr-ms").textContent = nz(summary.avg_ms, 0);
 
   const claims = $("#traffic-claims");
   claims.textContent = "";
@@ -2023,9 +2028,9 @@ function renderTraffic(profile) {
     url.style.textOverflow = "ellipsis";
     url.style.whiteSpace = "nowrap";
     row.appendChild(url);
-    row.appendChild(el("td", "cell-mono", event.status ?? 0));
-    row.appendChild(el("td", "cell-mono", event.bytes ?? 0));
-    row.appendChild(el("td", "cell-mono", event.ms ?? 0));
+    row.appendChild(el("td", "cell-mono", nz(event.status, 0)));
+    row.appendChild(el("td", "cell-mono", nz(event.bytes, 0)));
+    row.appendChild(el("td", "cell-mono", nz(event.ms, 0)));
     body.appendChild(row);
   });
   makeSortable($("#traffic-table"));
@@ -2046,7 +2051,7 @@ $("#btn-traffic-csv").addEventListener("click", () => {
   const lines = ["time,url,status,bytes,ms"];
   (trafficCache.events || []).forEach((event) => {
     lines.push([new Date((event.at || 0) * 1000).toISOString(), event.url, event.status, event.bytes, event.ms]
-      .map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","));
+      .map((value) => `"${String(nz(value, "")).replace(/"/g, '""')}"`).join(","));
   });
   download("ad-audit-traffic.csv", lines.join("\n"));
   toast("Журнал выгружен", "ok");
@@ -2379,9 +2384,9 @@ function showDrillResult(result) {
   head.appendChild(copy);
   box.appendChild(head);
   const facts = el("div", "drill-facts");
-  facts.appendChild(el("span", null, `HTTP ${result.status ?? "—"}`));
+  facts.appendChild(el("span", null, `HTTP ${nz(result.status, "-")}`));
   facts.appendChild(el("span", null, `${result.bytes} байт`));
-  facts.appendChild(el("span", null, `${result.ms ?? "—"} мс`));
+  facts.appendChild(el("span", null, `${nz(result.ms, "-")} мс`));
   facts.appendChild(el("span", null, `маркер: ${result.marker}`));
   box.appendChild(facts);
   if (result.flag) {
@@ -2665,7 +2670,7 @@ function renderStandSide() {
   const list = el("div", "scroll");
   findings
     .slice()
-    .sort((a, b) => (SEV_ORDER[a.severity] ?? 9) - (SEV_ORDER[b.severity] ?? 9))
+    .sort((a, b) => nz(SEV_ORDER[a.severity], 9) - nz(SEV_ORDER[b.severity], 9))
     .forEach((finding) => list.appendChild(findingRow(finding)));
   body.appendChild(list);
 }
@@ -2986,6 +2991,20 @@ document.addEventListener("click", (event) => {
 /* ---------- старт ---------- */
 
 async function boot() {
+  // Обработчики вкладок и таблиц — до первого await: если сервер отвечает
+  // медленно или не отвечает, интерфейс всё равно должен быть живым.
+  const hash = (location.hash || "").replace("#", "");
+  showTab(TITLES[hash] ? hash : "connect", false);
+  makeAllSortable();
+  $("#map-search").addEventListener("input", renderMap);
+  $("#map-open-only").addEventListener("change", renderMap);
+  $("#map-certain").addEventListener("change", renderMap);
+  $("#map-unresolved").addEventListener("change", renderMap);
+  $("#btn-journal-refresh").addEventListener("click", loadJournal);
+  $("#btn-journal-diff").addEventListener("click", loadJournalDiff);
+  $("#f-sort").value = state.sort;
+  window.__AD_BOOTED = true;
+
   try {
     const current = await api("/api/state");
     state.config = { target: current.target || {} };
@@ -3003,21 +3022,9 @@ async function boot() {
     if (last && last.findings) ingest(last);
   } catch (_) { /* аудита ещё нет */ }
 
-  const hash = (location.hash || "").replace("#", "");
-  showTab(TITLES[hash] ? hash : "connect", false);
-
   loadRules();
   loadKnowledge();
   loadDrills();
-  makeAllSortable();
-
-  $("#map-search").addEventListener("input", renderMap);
-  $("#map-open-only").addEventListener("change", renderMap);
-  $("#map-certain").addEventListener("change", renderMap);
-  $("#map-unresolved").addEventListener("change", renderMap);
-  $("#btn-journal-refresh").addEventListener("click", loadJournal);
-  $("#btn-journal-diff").addEventListener("click", loadJournalDiff);
-  $("#f-sort").value = state.sort;
 }
 
 boot();

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Аудит A/D</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2312161f'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='13' fill='%236fd1a8' text-anchor='middle'%3EAD%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/web/style.css">
 </head>
 <body>
@@ -739,6 +740,52 @@
 </div>
 
 <div class="toasts" id="toasts"></div>
+<script>
+(function () {
+  var shown = false;
+  var reason = "";
+  function show(text) {
+    if (shown) return;
+    shown = true;
+    var box = document.createElement("div");
+    box.id = "boot-error";
+    box.setAttribute("style", "position:fixed;left:0;right:0;top:0;z-index:99999;" +
+      "background:#2a1220;color:#ffd9e6;border-bottom:2px solid #b23a63;" +
+      "padding:14px 18px;font:14px/1.45 'Segoe UI',Arial,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.35)");
+    var head = document.createElement("b");
+    head.appendChild(document.createTextNode("Интерфейс не запустился. "));
+    box.appendChild(head);
+    box.appendChild(document.createTextNode(text));
+    var hint = document.createElement("div");
+    hint.setAttribute("style", "margin-top:6px;opacity:.8;font-size:13px");
+    hint.appendChild(document.createTextNode(
+      "Откройте в Chrome или Edge (Chromium), не в режиме IE. " +
+      "Если страница открыта как файл — запустите AD-Audit.exe или launcher.py."));
+    box.appendChild(hint);
+    (document.body || document.documentElement).appendChild(box);
+  }
+  window.__AD_SHOW_BOOT_ERROR = show;
+  window.onerror = function (message) {
+    reason = String(message || "неизвестная ошибка");
+    if (!window.__AD_BOOTED) show("Ошибка скрипта: " + reason + ".");
+    return false;
+  };
+  if (location.protocol === "file:") {
+    show("Страница открыта как файл, сервер приложения не запущен.");
+    return;
+  }
+  var ua = navigator.userAgent || "";
+  if (/Trident\/|MSIE |Edge\//.test(ua)) {
+    show("Браузер не выполняет скрипт интерфейса (старый Edge или режим IE).");
+    return;
+  }
+  setTimeout(function () {
+    if (!window.__AD_BOOTED) {
+      show("Скрипт не загрузился или упал до старта." + (reason ? " " + reason : ""));
+    }
+  }, 4000);
+})();
+</script>
 <script src="/web/app.js"></script>
 </body>
 </html>

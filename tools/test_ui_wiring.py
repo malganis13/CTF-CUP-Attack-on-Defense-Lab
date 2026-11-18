@@ -63,11 +63,16 @@ def main() -> int:
           'id="btn-rotate"' in HTML and 'api("/api/target/password"' in JS)
     check("сервисы на цели подключены",
           'id="btn-scan-services"' in HTML and 'api("/api/target/services"' in JS)
+    check("диагностика запуска встроена",
+          'box.id = "boot-error"' in HTML and "window.__AD_BOOTED" in HTML
+          and "window.__AD_BOOTED = true" in JS)
+    check("нет синтаксиса ES2020 в app.js",
+          "??" not in JS and "...file" not in JS)
 
     unsure = "не уверен" in JS and "certain" in JS
     check("уверенность отображается", unsure)
 
-    total = 21
+    total = 23
     print(f"\n{'пройдено' if FAILED == 0 else 'провалено'}: {total - FAILED}/{total}")
     return 0 if FAILED == 0 else 1
 
