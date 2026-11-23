@@ -246,10 +246,10 @@
             <button id="btn-audit" class="primary">Запустить аудит</button>
           </div>
           <div class="row" style="margin-top:14px">
-            <label class="field grow">без SSH: каталог или архив сервиса
+            <label class="field grow">путь: локальный каталог/архив или каталог на SSH-хосте
               <input id="audit-path" autocomplete="off" spellcheck="false"
-                     placeholder="D:\cup2025\veladora.zip — пусто: работать по SSH">
-              <span class="hint">.zip, .tar.gz, .tgz, .tar.bz2, .tar.xz; распаковка во временный каталог</span>
+                     placeholder="D:\cup2025\veladora.zip или /ctfcup/services — пусто: аудит всего хоста">
+              <span class="hint">локальный путь или архив — оффлайн; путь с «/» — подключиться по SSH и прочитать источники там (например /ctfcup/services)</span>
             </label>
           </div>
           <div class="progress"><div class="bar" id="audit-bar"></div></div>

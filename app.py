@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from adkit import __version__, confidence, drill, fixes, journal, liveness, patch, patterns, preflight, priority, probe, remote, ru, topology
 from adkit.store import Store
-from adkit.audit import Audit, analyze_sources, scan_target
+from adkit.audit import Audit, analyze_sources, scan_remote, scan_target
 from adkit.generate import generate_probe, generate_report, pick_endpoint
 from adkit.ratelimit import BUDGET
 from adkit.ssh import SSHError, backend_name, connect, local_hint, test_connection
@@ -762,6 +762,27 @@ class Handler(BaseHTTPRequestHandler):
                     audit_cfg["cve_online"] = bool(body.get("cve_online"))
                     online = audit_cfg["cve_online"]
                     save_config(SESSION["config"])
+                if folder and folder.startswith("/"):
+                    # путь на SSH-хосте: подключаемся и читаем источники оттуда
+                    target = SESSION["config"].get("target", {})
+                    if not target.get("host") or not target.get("user"):
+                        self.send_json(400, {"error": "путь на SSH-хосте: сначала заполните «Подключение»"})
+                        return
+                    password = SESSION.get("password")
+
+                    def run_remote(log):
+                        ssh = connect(target, password)
+                        try:
+                            log(f"connected: {ssh.label()}")
+                            result = scan_remote(ssh, folder, log, cve_online=online)
+                            result["offline"] = False
+                            log(f"done: {len(result['findings'])} findings")
+                            return result
+                        finally:
+                            ssh.close()
+
+                    self.send_json(200, {"job": start_job("audit", run_remote)})
+                    return
                 if folder:
                     # оффлайн: распакованный архив сервиса или сам архив, без SSH
                     def run_offline(log):

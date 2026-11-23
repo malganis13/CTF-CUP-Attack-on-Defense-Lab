@@ -725,6 +725,30 @@ def _extract(archive: Path, into: Path) -> None:
                 sink.write(source.read())
 
 
+def scan_remote(ssh: BaseSSH, root: str, log=lambda message: None,
+                cve_online: bool = False) -> dict:
+    """Аудит каталога на SSH-хосте: тот же движок, источники читаются по SSH.
+
+    Нужен там, где исходники лежат на машине, к которой есть SSH, но нет
+    локальной копии: турнирная виртуалка, стенд, соседний сервер. Путь —
+    абсолютный, каталог, внутри которого ищутся файлы исходников.
+    """
+    base = (root or "").strip().rstrip("/") or "/"
+    if not base.startswith("/"):
+        raise ValueError("путь на SSH-хосте должен быть абсолютным: /ctfcup/services")
+    audit = Audit(ssh, log, cve_online=cve_online)
+    log(f"remote scan: {base}")
+    files = audit._find_files([base])
+    manifests = audit._find_manifests([base])
+    log(f"remote source files: {len(files)}; manifests: {len(manifests)}")
+    sources = audit._read_files(sorted(set(files) | set(manifests)))
+    log(f"read {len(sources)} files; scanning")
+    result = analyze_sources(sources, [], ssh.label(), cve_online=cve_online)
+    result["remote"] = base
+    result["meta"].update({"roots": [base], "source_files": len(sources)})
+    return result
+
+
 def scan_target(path: str, log=lambda message: None, cve_online: bool = False) -> dict:
     """Аудит без SSH: каталог или архив сервиса, снятый с машины любым способом.
 

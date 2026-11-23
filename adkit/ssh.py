@@ -93,6 +93,11 @@ class ParamikoSSH(BaseSSH):
                 last = exc
                 if attempt + 1 < RETRIES:
                     time.sleep(RETRY_BACKOFF * (attempt + 1))
+        if isinstance(last, paramiko.AuthenticationException):
+            raise SSHError(
+                "не удалось войти: неверный пароль или ключ. "
+                "Введите пароль заново на вкладке «Подключение»"
+            ) from last
         raise SSHError(f"{type(last).__name__}: {last}") from last
 
     @staticmethod
